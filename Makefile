@@ -26,13 +26,17 @@ CFLAGS += -Wl,--no-as-needed
 LFLAGS += -Wl,--no-as-needed
 CFLAGS += -Wno-unused-variable -Wno-write-strings
 
-all: Turner
+all: Turner CsIke
 
 Turner:	Turner.cc
 	@echo "Compiling $@"
-	$(CPP) $(CFLAGS) $(INCLUDES) $< $(LIBS) -o $(BIN_DIR)/$@ 
+	@$(CPP) $(CFLAGS) $(INCLUDES) $< $(LIBS) -o $(BIN_DIR)/$@ 
+
+CsIke:	CsIke.cc
+	@echo "Compiling $@"
+	@$(CPP) $(CFLAGS) $(INCLUDES) $< $(LIBS) -o $(BIN_DIR)/$@ 
 
 clean:
 	@echo "Cleaning up"
 	@rm -rf build doc
-	@rm -f inc/*~ src/*~ *~
+	@rm -f inc/*~ src/*~ scripts/*~ *~

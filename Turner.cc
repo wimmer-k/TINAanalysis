@@ -4,15 +4,15 @@
 #include <TH2.h>
 #include <TCutG.h>
 #include <TTree.h>
-#include <TObject.h> // added KW
-#include <TEnv.h> // added KW
+#include <TObject.h>
+#include <TEnv.h>
 #include <TRandom3.h>
 #include <iostream>
-#include <iomanip> // added KW
-#include <string> // added KW
-#include <stdlib.h>  //added KW
-#include <math.h>  //added KW
-#include <map>  //added KW
+#include <iomanip>
+#include <string>
+#include <stdlib.h>
+#include <math.h>
+#include <map>
 
 //energy loss lib
 #include "Reconstruction.hh"
@@ -34,7 +34,8 @@ using namespace std;
 #define TIMEREF 0
 #define DEBUG 0
 
-char* massFile = (char*)"/home/daq/TiNA/ELoss/mass.dat";
+#define NDET 4
+char* massFile = (char*)"/home/wimmer/progs/eloss/mass.dat";
 TSpline3* protTarg_e2r;
 TSpline3* protTarg_r2e;
 TSpline3* deutTarg_e2r;
@@ -43,24 +44,24 @@ TSpline3* protFoil_e2r;
 TSpline3* protFoil_r2e;
 TSpline3* deutFoil_e2r;
 TSpline3* deutFoil_r2e;
-TSpline3* protDete_e2r[4];
-TSpline3* protDete_r2e[4];
-TSpline3* deutDete_e2r[4];
-TSpline3* deutDete_r2e[4];
+TSpline3* protDete_e2r[NDET];
+TSpline3* protDete_r2e[NDET];
+TSpline3* deutDete_e2r[NDET];
+TSpline3* deutDete_r2e[NDET];
 Kinematics* ddkine;
 Kinematics* ppkine;
 vector<Kinematics*> dpkine;
 
-TCutG* deutCut[4];
-TCutG* protCut[4];
-TCutG* pidCut[4];
+TCutG* deutCut[NDET];
+TCutG* protCut[NDET];
+TCutG* pidCut[NDET];
 
 //geometric address to module number
 int geo2num(int geo);
 //map adc ch to strip number and angle
 map<int,pair<int,double> > ch2stripmap(char* filename);
 //energy losses
-double calcenergyloss(double targetthick, double foilthick, double detthick[4], double ebeam);
+double calcenergyloss(double targetthick, double foilthick, double detthick[NDET], double ebeam);
 //kinemaicts
 void calckinematics(double midtarget);
 //pid cuts
@@ -85,20 +86,20 @@ int main(int argc, char** argv){
     return 1;
   }
   if(detectorsetup==NULL)
-    detectorsetup = (char*)"/home/daq/TiNA/detectorsetup_2um.dat";
+    detectorsetup = (char*)"/home/wimmer/TINA/settings/detectorsetup_2um.dat";
   if(calfile==NULL)
-    calfile = (char*)"/home/daq/TiNA/calparams_jul16.dat";
+    calfile = (char*)"/home/wimmer/TINA/settings/calparams_jul26.dat";
   if(pedfile==NULL)
-    pedfile = (char*)"/home/daq/TiNA/pedestals.dat";
+    pedfile = (char*)"/home/wimmer/TINA/settings/pedestals.dat";
   if(pidfile==NULL)
-    pidfile = (char*)"/home/daq/TiNA/pidcuts.root";
+    pidfile = (char*)"/home/wimmer/TINA/settings/pidcuts.root";
     
 
 
   // ========= Define input and output files
   cout << endl << "---> Start analyzing Run# = " << RunNumber << endl;
-  char* inputfilename  = (char*)Form("./data/run%04d.ridf",RunNumber);
-  char* outputfilename = (char*)Form("./root/dev%04d.root",RunNumber);
+  char* inputfilename  = (char*)Form("data/run%04d.ridf",RunNumber);
+  char* outputfilename = (char*)Form("root/run%04d.root",RunNumber);
 
 
   // ========= Define input and output files, trees, histograms etc...
@@ -117,24 +118,24 @@ int main(int argc, char** argv){
   Int_t tdcmult;
 
   //all rings
-  Double_t sirien[4][16];
+  Double_t sirien[NDET][16];
  
   //highest per detector (for now)
-  Double_t sienergy[4];
-  Int_t siring[4];
-  Double_t sitheta[4];
-  Int_t simult[4];
+  Double_t sienergy[NDET];
+  Int_t siring[NDET];
+  Double_t sitheta[NDET];
+  Int_t simult[NDET];
   //energyloss correction for pid
-  Double_t sicorr[4];
+  Double_t sicorr[NDET];
   //reconstructed energy at target center
-  Double_t sireco[2][4];
-  Int_t pid[4];
+  Double_t sireco[2][NDET];
+  Int_t pid[NDET];
 
   //todo
-  Double_t sibsen[4];
-  Double_t sibsti[4];
-  Double_t csien[4];
-  Double_t csiti[4];
+  Double_t sibsen[NDET];
+  Double_t sibsti[NDET];
+  Double_t csien[NDET];
+  Double_t csiti[NDET];
 
   //raw
   tr->Branch("adc",&adc,"adc[3][32]/I");
@@ -142,30 +143,30 @@ int main(int argc, char** argv){
   tr->Branch("adcmult",&adcmult,"adcmult/I");
   tr->Branch("tdcmult",&tdcmult,"tdcmult/I");
   //cal
-  tr->Branch("sirien",&sirien,"sirien[4][16]/D");
-  tr->Branch("sienergy",&sienergy,"sienergy[4]/D");
-  tr->Branch("sitheta",&sitheta,"sitheta[4]/D");
-  tr->Branch("siring",&siring,"siring[4]/I");
-  tr->Branch("simult",&simult,"simult[4]/I");
+  tr->Branch("sirien",  &sirien,  Form("sirien[%d][16]/D",NDET));
+  tr->Branch("sienergy",&sienergy,Form("sienergy[%d]/D",NDET));
+  tr->Branch("sitheta", &sitheta, Form("sitheta[%d]/D",NDET));
+  tr->Branch("siring",  &siring,  Form("siring[%d]/I",NDET));
+  tr->Branch("simult",  &simult,  Form("simult[%d]/I",NDET));
 
-  tr->Branch("sicorr",&sicorr,"sicorr[4]/D");
-  tr->Branch("pid",&pid,"pid[4]/I");
-  tr->Branch("sireco",&sireco,"sireco[2][4]/D");
+  tr->Branch("sicorr",  &sicorr,  Form("sicorr[%d]/D",NDET));
+  tr->Branch("pid",     &pid,     Form("pid[%d]/I",NDET));
+  tr->Branch("sireco",  &sireco,  Form("sireco[2][%d]/D",NDET));
 
-  tr->Branch("sibsen",&sibsen,"sibsen[4]/D");
-  tr->Branch("sibsti",&sibsti,"sibsti[4]/D");
-  tr->Branch("csien",&csien,"csien[4]/D");
-  tr->Branch("csiti",&csiti,"csiti[4]/D");
+  tr->Branch("sibsen",  &sibsen,  Form("sibsen[%d]/D",NDET));
+  tr->Branch("sibsti",  &sibsti,  Form("sibsti[%d]/D",NDET));
+  tr->Branch("csien",   &csien,   Form("csien[%d]/D",NDET));
+  tr->Branch("csiti",   &csiti,   Form("csiti[%d]/D",NDET));
 
 
   //define gain and offset parameters for calibration, 3 ADC, 1 TDC
   //pedestals == software thresholds for 3 adcs
-  double ped[4][32];
-  double gain[4][32];
-  double offs[4][32];
+  double ped[NDET][32];
+  double gain[NDET][32];
+  double offs[NDET][32];
   TEnv *cal = new TEnv(calfile);
   TEnv *pedestals = new TEnv(pedfile);
-  for(int m=0;m<4;m++){
+  for(int m=0;m<NDET;m++){
     for(int c=0;c<32;c++){
       gain[m][c] = cal->GetValue(Form("Gain.Module%d.Ch%d",m,c),0.0);
       offs[m][c] = cal->GetValue(Form("Offset.Module%d.Ch%d",m,c),0.0);
@@ -176,16 +177,16 @@ int main(int argc, char** argv){
     
   }
   
-  double detectorthick[4];
+  double detectorthick[NDET];
   TEnv* detsetup = new TEnv(detectorsetup);
   double foilthick = detsetup->GetValue("Foil.Thickness",36.0);
   double targetthick = detsetup->GetValue("Target.Thickness",2.0);
   double detectorangle = detsetup->GetValue("Detector.Angle",50.0);
-  for(int i=0;i<4;i++){
+  for(int i=0;i<NDET;i++){
     detectorthick[i] = detsetup->GetValue(Form("Detector.%d",i),300.0);
   }
   double ebeam = detsetup->GetValue("Beam.Energy",20);
-  string channelmap = detsetup->GetValue("Channel.Map", "channelmapping.dat");
+  string channelmap = detsetup->GetValue("Channel.Mapping", "channelmapping.dat");
   //initalize mapping from ADC channel to strip number and angle
   map<int,pair<int,double> > chmap = ch2stripmap((char*)channelmap.c_str());
   for(int i=0;i<16;i++){
@@ -214,7 +215,7 @@ int main(int argc, char** argv){
   //read in pid cuts
   readpidcuts(pidfile);
   fout->cd();
-  for(int i=0;i<4;i++){
+  for(int i=0;i<NDET;i++){
     if(deutCut[i]!=NULL)
       deutCut[i]->Write();
     if(protCut[i]!=NULL)
@@ -258,7 +259,7 @@ int main(int argc, char** argv){
     }
     adcmult = 0;
     tdcmult = 0;
-    for(int i=0;i<4;i++){
+    for(int i=0;i<NDET;i++){
       for(int j=0;j<16;j++)
 	sirien[i][j] = sqrt(-1);
       simult[i] = 0;
@@ -335,9 +336,9 @@ int main(int argc, char** argv){
 	  else if(geo==ADC0){
 	    if(DEBUG)
 	      cout << "geo: " << geo  << "\tchan: " << chan  << "\tval: " << val << endl; 
-	    if(chan>15 && chan<20)
+	    if(chan>15 && chan<15+NDET+1)//check
 	      sibsen[chan-16] = en;
-	    else if(chan<4)
+	    else if(chan<NDET)
 	      csien[chan] = en;
 	    else{
 	      //cout << "unknown channel" << endl;
@@ -377,7 +378,7 @@ int main(int argc, char** argv){
     // }
     if(hadtdc){
       tdcevt++;
-      for(int i=0;i<4;i++){
+      for(int i=0;i<NDET;i++){
 	int chan = i+2;
 	sibsti[i] = gain[geo2num(TDC0)][chan]*(tdc[chan]-tdc[TIMEREF]+rand->Uniform(0,1)) + offs[geo2num(TDC0)][chan];
 	chan = i+6;
@@ -392,7 +393,7 @@ int main(int argc, char** argv){
       bugevt++;
     
     if(haddata){
-      for(int i=0;i<4;i++){
+      for(int i=0;i<NDET;i++){
 	if(pidCut[i]!=NULL && pidCut[i]->IsInside(csien[i],sicorr[i])){
 	  pid[i] = 0;
 	  continue;
@@ -481,7 +482,7 @@ map<int,pair<int,double> > ch2stripmap(char* filename){
   }
   return m;
 }
-double calcenergyloss(double targetthick, double foilthick, double detectorthick[4], double ebeam){
+double calcenergyloss(double targetthick, double foilthick, double detectorthick[NDET], double ebeam){
   Nucleus *ti = new Nucleus(22,26,massFile);
   Compound *target = new Compound(ti);
   //Compound *target = new Compound("2.0DTI");
@@ -539,7 +540,7 @@ double calcenergyloss(double targetthick, double foilthick, double detectorthick
   double detedensity = 2.32; //g/cm^3 
   double protDete_range;
   double deutDete_range;
-  for(int i=0;i<4;i++){
+  for(int i=0;i<NDET;i++){
     detectorthick[i] *= detedensity*0.1;
     protDete->SetTargetThickness(detectorthick[i]);
     cout << "calculating energy loss of " <<  prot->GetSymbol() << " in detector " << i << " d = " << detectorthick[i] << " mg/cm^2 " ;
@@ -580,13 +581,13 @@ void calckinematics(double midtarget){
   cout << "calculated kinematics " << endl;
 }
 void readpidcuts(char* filename){
-  for(int i=0;i<4;i++){
+  for(int i=0;i<NDET;i++){
     deutCut[i] = NULL;
     protCut[i] = NULL;
     pidCut[i] = NULL;
   }
   TFile* fc = new TFile(filename);
-  for(int i=0;i<4;i++){
+  for(int i=0;i<NDET;i++){
     deutCut[i] = (TCutG*)fc->Get(Form("deut%d",i));
     protCut[i] = (TCutG*)fc->Get(Form("prot%d",i));
     pidCut[i] = (TCutG*)fc->Get(Form("csi%d",i));
