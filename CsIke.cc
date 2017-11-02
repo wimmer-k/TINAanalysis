@@ -30,7 +30,6 @@ using namespace std;
 #define NDET 4
 #define RAWCSI 0
 
-char* massFile = (char*)"/home/wimmer/progs/eloss/mass.dat";
 TSpline3* protDete_l2e[NDET][16];
 TSpline3* deutDete_l2e[NDET][16];
 
@@ -293,11 +292,11 @@ void calcenergyloss(char* detectorsetup){
   for(int i=0;i<16;i++){
     cout << i << "\t" << strmap[i] << "\t" << endl;
   }
-  Nucleus *si = new Nucleus(14,14,massFile);
+  Nucleus *si = new Nucleus(14,14);
   Compound *dete = new Compound(si);
   
-  Nucleus *prot = new Nucleus(1,0,massFile);
-  Nucleus *deut = new Nucleus(1,1,massFile);
+  Nucleus *prot = new Nucleus(1,0);
+  Nucleus *deut = new Nucleus(1,1);
 
   Reconstruction *protDete = new Reconstruction(prot, dete);
   Reconstruction *deutDete = new Reconstruction(deut, dete);

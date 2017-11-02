@@ -4,10 +4,10 @@
 
 BIN_DIR = $(HOME)/bin
 LIB_DIR = $(HOME)/lib
-TARTSYS = /usr/local/anaroot5
-COMMON_DIR = $(HOME)/common
-ELOSS_DIR = $(HOME)/progs/eloss
-KIN_DIR = $(HOME)/progs/reaction
+TARTSYS = /home/daq/tmp/anaroot/sources/Core/
+COMMON_DIR = $(HOME)/TINAanalysis/common
+ELOSS_DIR = $(HOME)/TINAanalysis/ELoss
+KIN_DIR = $(HOME)/TINAanalysis/Reaction
 
 ROOTCFLAGS   := $(shell root-config --cflags)
 ROOTLIBS     := $(shell root-config --libs)
@@ -18,13 +18,15 @@ CPP             = g++
 CFLAGS		= -Wall -Wno-long-long -g -O3 $(ROOTCFLAGS) -fPIC
 
 INCLUDES        = -I./inc -I$(COMMON_DIR) -I$(ELOSS_DIR) -I$(KIN_DIR) -I$(TARTSYS)/include
-BASELIBS 	= -lm $(ROOTLIBS) $(ROOTGLIBS) -L$(LIB_DIR) -L$(TARTSYS)/lib
+BASELIBS 	= -lm $(ROOTLIBS) $(ROOTGLIBS) -L$(LIB_DIR) -L$(TARTSYS)/.libs
 ALLIBS  	=  $(BASELIBS) -lCommandLineInterface -lanacore -lEnergyLoss -lKinematics
 LIBS 		= $(ALLIBS)
 LFLAGS		= -g -fPIC -shared
 CFLAGS += -Wl,--no-as-needed
 LFLAGS += -Wl,--no-as-needed
 CFLAGS += -Wno-unused-variable -Wno-write-strings
+
+CFLAGS += -UKYUSHU
 
 all: Turner CsIke
 
