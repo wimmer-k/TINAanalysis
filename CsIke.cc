@@ -35,7 +35,10 @@ TSpline3* deutDete_l2e[NDET][16];
 
 TCutG* deutCut[NDET];
 TCutG* protCut[NDET];
-TCutG* pidCut[NDET];
+TCutG* csiSCut[NDET];
+#ifndef KYUSHU
+TCutG* csiLCut[NDET];
+#endif
 
 //map strip number to angle
 map<int,double> strip2thetamap(char* filename);
@@ -54,7 +57,6 @@ int main(int argc, char** argv){
   vector<char*> InputFiles;
   char *OutFile = NULL;
   char* detectorsetup = NULL;
-  char* calfile = NULL;
   char* pidfile = NULL;
   int LastEvent =-1;
   int Verbose =0;
@@ -62,7 +64,6 @@ int main(int argc, char** argv){
   interface->Add("-i", "input files", &InputFiles);
   interface->Add("-o", "output file", &OutFile);    
   interface->Add("-d", "detector settings", &detectorsetup);
-  interface->Add("-c", "calibration parameters", &calfile);  
   interface->Add("-p", "pid cut file", &pidfile);  
   interface->Add("-le", "last event to be read", &LastEvent);  
   interface->Add("-v", "verbose level", &Verbose);  
@@ -75,8 +76,6 @@ int main(int argc, char** argv){
   //set defaults
   if(detectorsetup==NULL)
     detectorsetup = (char*)"/home/wimmer/TINA/settings/detectorsetup_2um.dat";
-  if(calfile==NULL)
-    calfile = (char*)"/home/wimmer/TINA/settings/calparams_jul26.dat";
   if(pidfile==NULL)
     pidfile = (char*)"/home/wimmer/TINA/settings/pidcuts.root";
 
@@ -106,46 +105,80 @@ int main(int argc, char** argv){
   }
 
   TList *hlist = new TList();
-  TH2F* hsienergy_csi[NDET];
-  TH2F* hsicorr_csi[NDET];
-  TH2F* hsibsen_csi[NDET];
-  TH2F* hcal_csi[NDET];
-  TH2F* hsienergy_theta[NDET];
+  TH2F* hsifsen_csiS[NDET];
+  TH2F* hsicorr_csiS[NDET];
+  TH2F* hsibsen_csiS[NDET];
+  TH2F* hcal_csiS[NDET];
+#ifndef KYUSHU
+  TH2F* hsifsen_csiL[NDET];
+  TH2F* hsicorr_csiL[NDET];
+  TH2F* hsibsen_csiL[NDET];
+  TH2F* hcal_csiL[NDET];
+#endif
+  TH2F* hsifsen_theta[NDET];
   TH2F* hsireco_theta[NDET];
   //histograms
   for(unsigned short d=0;d<NDET;d++){
-    
     if(RAWCSI){
-      hsienergy_csi[d] = new TH2F(Form("hsienergy_csi_%d",d),Form("hsienergy_csi_%d",d),512,0,4096,2000,0,20);hlist->Add(hsienergy_csi[d]);
-      hsicorr_csi[d] = new TH2F(Form("hsicorr_csi_%d",d),Form("hsicorr_csi_%d",d),512,0,4096,2000,0,20);hlist->Add(hsicorr_csi[d]);
-      hsibsen_csi[d] = new TH2F(Form("hsibsen_csi_%d",d),Form("hsibsen_csi_%d",d),512,0,4096,2000,0,20);hlist->Add(hsibsen_csi[d]);
+      hsifsen_csiS[d] = new TH2F(Form("hsifsen_csiS_%d",d),Form("hsifsen_csiS_%d",d),512,0,4096,2000,0,20);hlist->Add(hsifsen_csiS[d]);
+      hsicorr_csiS[d] = new TH2F(Form("hsicorr_csiS_%d",d),Form("hsicorr_csiS_%d",d),512,0,4096,2000,0,20);hlist->Add(hsicorr_csiS[d]);
+      hsibsen_csiS[d] = new TH2F(Form("hsibsen_csiS_%d",d),Form("hsibsen_csiS_%d",d),512,0,4096,2000,0,20);hlist->Add(hsibsen_csiS[d]);
     }
     else{
-      hsienergy_csi[d] = new TH2F(Form("hsienergy_csi_%d",d),Form("hsienergy_csi_%d",d),500,0,20,2000,0,20);hlist->Add(hsienergy_csi[d]);
-      hsicorr_csi[d] = new TH2F(Form("hsicorr_csi_%d",d),Form("hsicorr_csi_%d",d),500,0,20,2000,0,20);hlist->Add(hsicorr_csi[d]);
-      hsibsen_csi[d] = new TH2F(Form("hsibsen_csi_%d",d),Form("hsibsen_csi_%d",d),500,0,20,2000,0,20);hlist->Add(hsibsen_csi[d]);
+      hsifsen_csiS[d] = new TH2F(Form("hsifsen_csiS_%d",d),Form("hsifsen_csiS_%d",d),500,0,20,2000,0,20);hlist->Add(hsifsen_csiS[d]);
+      hsicorr_csiS[d] = new TH2F(Form("hsicorr_csiS_%d",d),Form("hsicorr_csiS_%d",d),500,0,20,2000,0,20);hlist->Add(hsicorr_csiS[d]);
+      hsibsen_csiS[d] = new TH2F(Form("hsibsen_csiS_%d",d),Form("hsibsen_csiS_%d",d),500,0,20,2000,0,20);hlist->Add(hsibsen_csiS[d]);
     }
-    hsienergy_theta[d] = new TH2F(Form("hsienergy_theta_%d",d),Form("hsienergy_theta_%d",d),55,25,80,2000,0,20);hlist->Add(hsienergy_theta[d]);
+#ifndef KYUSHU
+    if(RAWCSI){
+      hsifsen_csiL[d] = new TH2F(Form("hsifsen_csiL_%d",d),Form("hsifsen_csiL_%d",d),512,0,4096,2000,0,20);hlist->Add(hsifsen_csiL[d]);
+      hsicorr_csiL[d] = new TH2F(Form("hsicorr_csiL_%d",d),Form("hsicorr_csiL_%d",d),512,0,4096,2000,0,20);hlist->Add(hsicorr_csiL[d]);
+      hsibsen_csiL[d] = new TH2F(Form("hsibsen_csiL_%d",d),Form("hsibsen_csiL_%d",d),512,0,4096,2000,0,20);hlist->Add(hsibsen_csiL[d]);
+    }
+    else{
+      hsifsen_csiL[d] = new TH2F(Form("hsifsen_csiL_%d",d),Form("hsifsen_csiL_%d",d),500,0,20,2000,0,20);hlist->Add(hsifsen_csiL[d]);
+      hsicorr_csiL[d] = new TH2F(Form("hsicorr_csiL_%d",d),Form("hsicorr_csiL_%d",d),500,0,20,2000,0,20);hlist->Add(hsicorr_csiL[d]);
+      hsibsen_csiL[d] = new TH2F(Form("hsibsen_csiL_%d",d),Form("hsibsen_csiL_%d",d),500,0,20,2000,0,20);hlist->Add(hsibsen_csiL[d]);
+    }
+#endif
+    hsifsen_theta[d] = new TH2F(Form("hsifsen_theta_%d",d),Form("hsifsen_theta_%d",d),55,25,80,2000,0,20);hlist->Add(hsifsen_theta[d]);
     hsireco_theta[d] = new TH2F(Form("hsireco_theta_%d",d),Form("hsireco_theta_%d",d),55,25,80,2000,0,20);hlist->Add(hsireco_theta[d]);
     if(RAWCSI)
-      hcal_csi[d] = new TH2F(Form("hcal_csi_%d",d),Form("hcal_csi_%d",d),512,0,4096,2000,0,20);
+      hcal_csiS[d] = new TH2F(Form("hcal_csiS_%d",d),Form("hcal_csiS_%d",d),512,0,4096,2000,0,20);
     else
-      hcal_csi[d] = new TH2F(Form("hcal_csi_%d",d),Form("hcal_csi_%d",d),500,0,20,2000,0,20);
-    hlist->Add(hcal_csi[d]);
+      hcal_csiS[d] = new TH2F(Form("hcal_csiS_%d",d),Form("hcal_csiS_%d",d),500,0,20,2000,0,20);
+    hlist->Add(hcal_csiS[d]);
+#ifndef KYUSHU
+    if(RAWCSI)
+      hcal_csiL[d] = new TH2F(Form("hcal_csiL_%d",d),Form("hcal_csiL_%d",d),512,0,4096,2000,0,20);
+    else
+      hcal_csiL[d] = new TH2F(Form("hcal_csiL_%d",d),Form("hcal_csiL_%d",d),500,0,20,2000,0,20);
+    hlist->Add(hcal_csiL[d]);
+#endif
   }
-  
+  TH2F* tdccorr = new TH2F("tdccorr","tdccorr",12,0,12,12,0,12);
+  hlist->Add(tdccorr);
+
+  int tdc[64];
   int siring[NDET];
   double sitheta[NDET];
-  double sienergy[NDET];
+  double sifsen[NDET];
   double sibsen[NDET];
-  double csien[NDET];
+  double csiSen[NDET];
+#ifndef KYUSHU
+  double csiLen[NDET];
+#endif
   double sireco[2][NDET];
+  tr->SetBranchAddress("tdc",&tdc);
   tr->SetBranchAddress("siring",&siring);
   tr->SetBranchAddress("sitheta",&sitheta);
-  tr->SetBranchAddress("sienergy",&sienergy);
+  tr->SetBranchAddress("sifsen",&sifsen);
   tr->SetBranchAddress("sibsen",&sibsen);
   tr->SetBranchAddress("sireco",&sireco);
-  tr->SetBranchAddress("csien",&csien);
+  tr->SetBranchAddress("csiSen",&csiSen);
+#ifndef KYUSHU
+  tr->SetBranchAddress("csiLen",&csiLen);
+#endif
   Double_t nentries = tr->GetEntries();
   cout << nentries << " entries in tree" << endl;
   if(nentries<1)
@@ -153,6 +186,8 @@ int main(int argc, char** argv){
   if(LastEvent>0)
     nentries = LastEvent;
 
+
+  int startcsitdc =16;
   long long int nbytes = 0;
   Int_t status;
   for(int i=0; i<nentries;i++){
@@ -165,14 +200,19 @@ int main(int argc, char** argv){
 	(Float_t)i/(time_end - time_start) << " events/s " <<
 	(nentries-i)*(time_end - time_start)/(Float_t)i << "s to go \r" << flush;
     }
+    for(unsigned short t=0;t<64;t++)
+      tdc[t] = 0;
     for(unsigned short d=0;d<NDET;d++){
       siring[d] = -1;
       sitheta[d] = NAN;
-      sienergy[d] = NAN;
+      sifsen[d] = NAN;
       sireco[0][d] = NAN;
       sireco[1][d] = NAN;
       sibsen[d] = NAN;
-      csien[d] = NAN;
+      csiSen[d] = NAN;
+#ifndef KYUSHU
+      csiLen[d] = NAN;
+#endif
     }
     if(Verbose>2)
       cout << "getting entry " << i << endl;
@@ -189,31 +229,34 @@ int main(int argc, char** argv){
     }
     nbytes += status;
     for(unsigned short d=0;d<NDET;d++){
-      //cout << sienergy[d] << "\t "<< sibsen[d]<< "\t "<< csien[d] << endl;
-      if(sienergy[d]>0)
-	hsienergy_theta[d]->Fill(sitheta[d],sienergy[d]);
+      //cout << sifsen[d] << "\t "<< sibsen[d]<< "\t "<< csiSen[d] << endl;
+      if(sifsen[d]>0)
+	hsifsen_theta[d]->Fill(sitheta[d],sifsen[d]);
       if(sireco[1][d]>0)
 	hsireco_theta[d]->Fill(sitheta[d],sireco[1][d]);    
-      if(sienergy[d]>0 && csien[d]>0){
-	hsienergy_csi[d]->Fill(csien[d],sienergy[d]);
+      if(sifsen[d]>0 && csiSen[d]>0){
+	hsifsen_csiS[d]->Fill(csiSen[d],sifsen[d]);
 	double alpha = 90.-detectorangle-sitheta[d];
-	hsicorr_csi[d]->Fill(csien[d],cos(alpha*deg2rad)*sienergy[d]);
-	if(pidCut[d] && pidCut[d]->IsInside(csien[d],sienergy[d])){
-	  //cout << d <<",\tE = "<< sienergy[d] << ",\tth = "<< sitheta[d]<< ",\tcsiraw = "<< csien[d] << endl;
+	hsicorr_csiS[d]->Fill(csiSen[d],cos(alpha*deg2rad)*sifsen[d]);
+	if(csiSCut[d] && csiLCut[d]->IsInside(csiSen[d],sifsen[d])){
+	  //cout << d <<",\tE = "<< sifsen[d] << ",\tth = "<< sitheta[d]<< ",\tcsiraw = "<< csien[d] << endl;
 	  if(siring[d]>-1){
-	    double en = protDete_l2e[d][siring[d]]->Eval(sienergy[d]);
-	    //cout << siring[d] << "\t" << sienergy[d] << "\t" << en << endl;
-	    hcal_csi[d]->Fill(csien[d],en-sienergy[d]);
+	    double en = protDete_l2e[d][siring[d]]->Eval(sifsen[d]);
+	    //cout << siring[d] << "\t" << sifsen[d] << "\t" << en << endl;
+	    hcal_csiS[d]->Fill(csiSen[d],en-sifsen[d]);
 	  }
-	  // double range = 
-	  //  calc total energy from sitheta and sienergy
-	  //  plot Etot - sienergy
 	}
+      }//si and csi en >0
+      if(sibsen[d]>0 && csiSen[d]>0)
+	hsibsen_csiS[d]->Fill(csiSen[d],sibsen[d]);
+    }//ndet
+    for(int c1=startcsitdc;c1<startcsitdc+12;c1++){
+      for(int c2=startcsitdc;c2<startcsitdc+12;c2++){
+	if(tdc[c1]>8e4 && tdc[c1]< 12e4 && tdc[c2]>8e4 && tdc[c2]< 12e4)
+	  tdccorr->Fill(c1-startcsitdc,c2-startcsitdc);
       }
-      if(sibsen[d]>0 && csien[d]>0)
-	hsibsen_csi[d]->Fill(csien[d],sibsen[d]);
     }
-  }
+  }//nevents
   cout << endl;
   cout << nbytes << " bytes read ("<<nbytes/1024/1024<<" MB)" << endl; 
   double time_end = get_time();
@@ -322,13 +365,19 @@ void readpidcuts(char* filename){
   for(int i=0;i<NDET;i++){
     deutCut[i] = NULL;
     protCut[i] = NULL;
-    pidCut[i] = NULL;
+    csiSCut[i] = NULL;
+#ifndef KYUSHU
+    csiLCut[i] = NULL;
+#endif
   }
   TFile* fc = new TFile(filename);
   for(int i=0;i<NDET;i++){
     deutCut[i] = (TCutG*)fc->Get(Form("deut%d",i));
     protCut[i] = (TCutG*)fc->Get(Form("prot%d",i));
-    pidCut[i] = (TCutG*)fc->Get(Form("csi%d",i));
+    csiSCut[i] = (TCutG*)fc->Get(Form("csiS%d",i));
+#ifndef KYUSHU
+    csiLCut[i] = (TCutG*)fc->Get(Form("csiL%d",i));
+#endif
   }
 }
 

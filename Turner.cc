@@ -84,13 +84,15 @@ int main(int argc, char** argv){
   vlevel = 0;
   int LastEvent =-1;
   CommandLineInterface* interface = new CommandLineInterface();
-  interface->Add("-r", "RunNumber", &RunNumber);
+  interface->Add("-r", "run number", &RunNumber);
   interface->Add("-d", "detector settings", &detectorsetup);
   interface->Add("-c", "calibration parameters", &calfile);  
   interface->Add("-p", "pedestal parameters", &pedfile);  
   interface->Add("-i", "pid cut file", &pidfile);  
   interface->Add("-le", "last event to be read", &LastEvent);  
   interface->Add("-v", "verbose level", &vlevel);  
+
+  //check flags and complain if somethings is missing
   interface->CheckFlags(argc, argv);
   if(RunNumber<0){
     cout << "invalid runnumber: " << RunNumber << endl;
@@ -107,21 +109,16 @@ int main(int argc, char** argv){
   if(pidfile==NULL)
     cout << "Warning: no PID cuts given!" << endl;
 
-  // ========= Define input and output files
-  cout << endl << "---> Start analyzing Run# = " << RunNumber << endl;
+  //input and output files 
+  cout <<" analyzing run " << RunNumber << endl;
   char* inputfilename  = (char*)Form("data/run%04d.ridf",RunNumber);
   char* outputfilename = (char*)Form("root/run%04d.root",RunNumber);
-
-
-  // ========= Define input and output files, trees, histograms etc...
-  // -- open input file
   TArtEventStore *estore = new TArtEventStore();
   estore->Open(inputfilename);
   TArtRawEventObject *rawevent = estore->GetRawEventObject();
-
-  // -- open output file
   TFile *fout = new TFile(outputfilename,"RECREATE");
 
+  //output tree
   TTree *tr = new TTree("tr","events");
   Int_t adc[NADC][32];
   Int_t tdc[64];
@@ -132,25 +129,29 @@ int main(int argc, char** argv){
   //all rings
   Double_t sirien[NDET][16];
  
+  Double_t sifsti[NDET];
   //highest per detector (for now)
-  Double_t sienergy[NDET];
+  Double_t sifsen[NDET];
   Int_t siring[NDET];
   Double_t sitheta[NDET];
   //strip mult per detector
   Int_t simult[NDET];
-  //energyloss correction incident angle alpha on detector (just for pid), from sienergy
+  //energyloss correction incident angle alpha on detector (just for pid), from sifsen
   Double_t sicorr[NDET];
-  //reconstructed energy at target center, from sienergy
+  //reconstructed energy at target center, from sifsen
   Double_t sireco[2][NDET]; //0 only foils, 1 foils and target energy loss reconstructed
   //pid flag: 0 identified (proton), 1 E/theta pid proton, 2 E/theta pid deuteron
   Int_t pid[NDET]; //check still kyushu type, id only for protons
-
-  //todo
+  
+  
+  //backside
   Double_t sibsen[NDET];
   Double_t sibsti[NDET];
-  //it is better to make two variables
-  Double_t csien[NDET*2];// times 2 for small and large// maybe change to small and large separate? // check
-  Double_t csiti[NDET*2];
+
+  Double_t csiSen[NDET];
+  Double_t csiSti[NDET];
+  Double_t csiLen[NDET];
+  Double_t csiLti[NDET];
 
   //raw
   tr->Branch("adc",&adc,Form("adc[%d][32]/I",NADC));
@@ -160,7 +161,8 @@ int main(int argc, char** argv){
   tr->Branch("tdcmult",&tdcmult,"tdcmult/I");
   //cal
   tr->Branch("sirien",  &sirien,  Form("sirien[%d][16]/D",NDET));
-  tr->Branch("sienergy",&sienergy,Form("sienergy[%d]/D",NDET));
+  tr->Branch("sifsti",  &sifsti,  Form("sifsti[%d]/D",NDET));
+  tr->Branch("sifsen",  &sifsen,  Form("sifsen[%d]/D",NDET));
   tr->Branch("sitheta", &sitheta, Form("sitheta[%d]/D",NDET));
   tr->Branch("siring",  &siring,  Form("siring[%d]/I",NDET));
   tr->Branch("simult",  &simult,  Form("simult[%d]/I",NDET));
@@ -171,8 +173,10 @@ int main(int argc, char** argv){
 
   tr->Branch("sibsen",  &sibsen,  Form("sibsen[%d]/D",NDET));
   tr->Branch("sibsti",  &sibsti,  Form("sibsti[%d]/D",NDET));
-  tr->Branch("csien",   &csien,   Form("csien[%d]/D",NDET*2));
-  tr->Branch("csiti",   &csiti,   Form("csiti[%d]/D",NDET*2));
+  tr->Branch("csiSen",  &csiSen,  Form("csiSen[%d]/D",NDET));
+  tr->Branch("csiSti",  &csiSti,  Form("csiSti[%d]/D",NDET));
+  tr->Branch("csiLen",  &csiLen,  Form("csiLen[%d]/D",NDET));
+  tr->Branch("csiLti",  &csiLti,  Form("csiLti[%d]/D",NDET));
 
 
   //define gain and offset parameters for calibration, (NADC) ADC, 1 TDC
@@ -204,6 +208,7 @@ int main(int argc, char** argv){
     
   }
   
+  //reading in detector setup
   double detectorthick[NDET];
   TEnv* detsetup = new TEnv(detectorsetup);
   double foilthick = detsetup->GetValue("Foil.Thickness",36.0);
@@ -255,7 +260,6 @@ int main(int argc, char** argv){
   }
  
 
-  // ========= LOOP for each event
 
   int neve = 0;  // event number
   TRandom3 *rand = new TRandom3();
@@ -271,15 +275,14 @@ int main(int argc, char** argv){
   hraw[NADC] = new TH2F("tdc_0","tdc_0",64,0,64,4096,0,32*4096);
   hraw[NADC+1] = new TH2F("tdcchmult_0","tdcchmult_0",64,0,64,16,0,16);
 
-  while(estore->GetNextEvent()){ // from here, sorting the data
+  while(estore->GetNextEvent()){ 
     if(vlevel >1){
       cout << "-------------------------------------next event segments = "<<rawevent->GetNumSeg()<< endl;
     }
     if(neve == LastEvent)
       break;
-    // --- print sorted event number
     if (neve%10000==0)
-      cout << neve << " events sorted\r" << flush;
+      cout << neve << " events analyzed\r" << flush;
 
     //clear 
     for(int i=0;i<32;i++){
@@ -297,7 +300,8 @@ int main(int argc, char** argv){
 	sirien[i][j] = sqrt(-1);
       simult[i] = 0;
       siring[i] = -1;
-      sienergy[i] = sqrt(-1);
+      sifsti[i] = sqrt(-1);
+      sifsen[i] = sqrt(-1);
       sitheta[i] = sqrt(-1);
       sicorr[i] = sqrt(-1);
       sireco[0][i] = sqrt(-1);
@@ -305,10 +309,10 @@ int main(int argc, char** argv){
       pid[i] = -1;
       sibsen[i] = -sqrt(-1);
       sibsti[i] = sqrt(-1);
-      csien[i] = sqrt(-1);
-      csiti[i] = sqrt(-1);
-      csien[i+NDET] = sqrt(-1);
-      csiti[i+NDET] = sqrt(-1);
+      csiSen[i] = sqrt(-1);
+      csiSti[i] = sqrt(-1);
+      csiLen[i] = sqrt(-1);
+      csiLti[i] = sqrt(-1);
     }
 
     bool haddata = false;
@@ -316,13 +320,11 @@ int main(int argc, char** argv){
     bool hadtdc = false;
     bool hadbug = false;
 
-
-
-    // --- reading data
+    //loop over the segments
     for(int i=0;i<rawevent->GetNumSeg();i++){
       TArtRawSegmentObject *seg = rawevent->GetSegment(i);
       if(vlevel>1){
-	cout << "segment " << i << "\tAddress " << seg->GetAddress() << "\tDevice " << seg->GetDevice() << "\tFocalPlane " << seg->GetFP() << "\tDetector " << seg->GetDetector() << "\tseg->GetModule "<< seg->GetModule() << "\tnum data = " << seg->GetNumData() << endl;
+	cout << "event " << neve << "segment " << i << "\tAddress " << seg->GetAddress() << "\tDevice " << seg->GetDevice() << "\tFocalPlane " << seg->GetFP() << "\tDetector " << seg->GetDetector() << "\tModule "<< seg->GetModule() << "\tnum data = " << seg->GetNumData() << endl;
       }
       //for PID:
       //dev 60, fp 0, det 12, geo 1 (moco + mtdc)  (13 instead of 12 for v1290) 
@@ -377,10 +379,10 @@ int main(int argc, char** argv){
 	    simult[det]++;
 	    int ring = chmap[chan%16].first; // mapping to real strip number
 	    sirien[det][ring] = en;
-	    if(siring[det]<0 || en > sienergy[det]){
+	    if(siring[det]<0 || en > sifsen[det]){
 	      siring[det] = ring;
 	      sitheta[det] = chmap[chan%16].second; // mapping to theta
-	      sienergy[det] = en;
+	      sifsen[det] = en;
 	      double alpha = 90.-detectorangle-sitheta[det];
 	      sicorr[det] = cos(alpha*deg2rad)*en;
 	    }
@@ -394,14 +396,16 @@ int main(int argc, char** argv){
 	    if(chan>15 && chan<15+NDET+1)//check
 	      sibsen[chan-16] = en;
 	    else if(chan<NDET)
-	      csien[chan] = en;
+	      csiSen[chan] = en;
 	  }
 #else
 	  else if(geo==ADC3){
 	    if(chan<NDET)
 	      sibsen[chan] = en;
 	    else if(chan>15 && chan<16+NDET)
-	      csien[chan-16] = en;
+	      csiSen[chan-16] = en;
+	    else if(chan>15+NDET && chan<16+2*NDET)
+	      csiLen[chan-16-NDET] = en;
 	  }
 	  else if(geo==ADC4){
 	    // cout << "ADC4 hit, should be empty/spare" << endl;
@@ -446,12 +450,28 @@ int main(int argc, char** argv){
       }
       tdcevt++;
       for(int i=0;i<NDET;i++){
-	//check!!!!!!!!
-	int chan = i+2;//check
-	sibsti[i] = gain[geo2num(TDC0)][chan]*(tdc[chan]-tdc[TIMEREF]+rand->Uniform(0,1)) + offs[geo2num(TDC0)][chan];
-	chan = i+6;//check
-	csiti[i] = gain[geo2num(TDC0)][chan]*(tdc[chan]-tdc[TIMEREF]+rand->Uniform(0,1)) + offs[geo2num(TDC0)][chan];	
-	//end check!!!!!!!!
+ 
+#ifdef KYUSHU 
+	int chan = i+2;
+	if(tdc[chan]>0)
+	  sibsti[i] = gain[geo2num(TDC0)][chan]*(tdc[chan]-tdc[TIMEREF]+rand->Uniform(0,1)) + offs[geo2num(TDC0)][chan];
+	chan = i+6;
+	if(tdc[chan]>0)
+	  csiSti[i] = gain[geo2num(TDC0)][chan]*(tdc[chan]-tdc[TIMEREF]+rand->Uniform(0,1)) + offs[geo2num(TDC0)][chan];	
+#else
+	int chan = i+4;
+	if(tdc[chan]>0)
+	  sifsti[i] = gain[geo2num(TDC0)][chan]*(tdc[chan]-tdc[TIMEREF]+rand->Uniform(0,1)) + offs[geo2num(TDC0)][chan];
+	chan = i+10;
+	if(tdc[chan]>0)
+	  sibsti[i] = gain[geo2num(TDC0)][chan]*(tdc[chan]-tdc[TIMEREF]+rand->Uniform(0,1)) + offs[geo2num(TDC0)][chan];
+	chan = i+16;
+	if(tdc[chan]>0)
+	  csiSti[i] = gain[geo2num(TDC0)][chan]*(tdc[chan]-tdc[TIMEREF]+rand->Uniform(0,1)) + offs[geo2num(TDC0)][chan];
+	chan = i+22;
+	if(tdc[chan]>0)
+	  csiLti[i] = gain[geo2num(TDC0)][chan]*(tdc[chan]-tdc[TIMEREF]+rand->Uniform(0,1)) + offs[geo2num(TDC0)][chan];
+#endif
       }
     }
     for(int i=0;i<NADC;i++){
@@ -463,15 +483,15 @@ int main(int argc, char** argv){
     
     if(haddata){
       for(int i=0;i<NDET;i++){
-	if(pidCut[i]!=NULL && pidCut[i]->IsInside(csien[i],sicorr[i])){
+	if(pidCut[i]!=NULL && pidCut[i]->IsInside(csiLen[i],sicorr[i])){//check change
 	  pid[i] = 0;
 	  continue;
 	}
 	double range;
 	double alpha;
-	if(deutCut[i]!=NULL && deutCut[i]->IsInside(sitheta[i],sienergy[i])){
+	if(deutCut[i]!=NULL && deutCut[i]->IsInside(sitheta[i],sifsen[i])){
 	  pid[i] = 2;
-	  double ene = sienergy[i];
+	  double ene = sifsen[i];
 	  //reconstruct energy loss in the al foil
 #ifdef KYUHSU
 	  alpha = 90.-detectorangle-sitheta[i];
@@ -488,9 +508,9 @@ int main(int argc, char** argv){
 	  ene = deutTarg_r2e->Eval(range+tathick);
 	  sireco[1][i] = ene;
 	}
-	else if(protCut[i]!=NULL && protCut[i]->IsInside(sitheta[i],sienergy[i])){
+	else if(protCut[i]!=NULL && protCut[i]->IsInside(sitheta[i],sifsen[i])){
 	  pid[i] = 1;
-	  double ene = sienergy[i];
+	  double ene = sifsen[i];
 #ifdef KYUHSU
 	  alpha = 90.-detectorangle-sitheta[i];
 	  double althick = foilthick*foildensity*0.1/cos(alpha*deg2rad);
