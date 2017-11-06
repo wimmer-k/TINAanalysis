@@ -151,20 +151,24 @@ int main(int argc, char** argv){
   Int_t simult[NDET];
   //energyloss correction incident angle alpha on detector (just for pid), from sifsen
   Double_t sicorr[NDET];
-  //reconstructed energy at target center, from sifsen
-  Double_t sireco[2][NDET]; //0 only foils, 1 foils and target energy loss reconstructed
-  //pid flag: 0 identified (proton), 1 E/theta pid proton, 2 E/theta pid deuteron
-  Int_t pid[NDET]; //check still kyushu type, id only for protons
-  
-  
+    
   //backside
   Double_t sibsen[NDET];
   Double_t sibsti[NDET];
-
+  
+  //csi
   Double_t csiSen[NDET];
   Double_t csiSti[NDET];
   Double_t csiLen[NDET];
   Double_t csiLti[NDET];
+
+  //total energy for sifsen and csi
+  Double_t toten[NDET];
+  //reconstructed energy at target center, from sifsen + csi
+  Double_t totreco[2][NDET]; //0 only foils, 1 foils and target energy loss reconstructed
+  //pid flag: 0 identified (proton), 1 E/theta pid proton, 2 E/theta pid deuteron
+  Int_t pid[NDET]; //check still kyushu type, id only for protons
+
 
   //raw
   tr->Branch("adc",&adc,Form("adc[%d][32]/I",NADC));
@@ -181,8 +185,10 @@ int main(int argc, char** argv){
   tr->Branch("simult",  &simult,  Form("simult[%d]/I",NDET));
 
   tr->Branch("sicorr",  &sicorr,  Form("sicorr[%d]/D",NDET));
+  
+  tr->Branch("toten",   &toten,   Form("toten[%d]/D",NDET));
   tr->Branch("pid",     &pid,     Form("pid[%d]/I",NDET));
-  tr->Branch("sireco",  &sireco,  Form("sireco[2][%d]/D",NDET));
+  tr->Branch("totreco", &totreco, Form("totreco[2][%d]/D",NDET));
 
   tr->Branch("sibsen",  &sibsen,  Form("sibsen[%d]/D",NDET));
   tr->Branch("sibsti",  &sibsti,  Form("sibsti[%d]/D",NDET));
@@ -321,8 +327,8 @@ int main(int argc, char** argv){
       sifsen[i] = sqrt(-1);
       sitheta[i] = sqrt(-1);
       sicorr[i] = sqrt(-1);
-      sireco[0][i] = sqrt(-1);
-      sireco[1][i] = sqrt(-1);
+      totreco[0][i] = sqrt(-1);
+      totreco[1][i] = sqrt(-1);
       pid[i] = -1;
       sibsen[i] = -sqrt(-1);
       sibsti[i] = sqrt(-1);
@@ -523,6 +529,14 @@ int main(int argc, char** argv){
       bugevt++;
     //reconstruc energy loss
     if(haddata){
+      //calculate total energy
+      for(int i=0;i<NDET;i++){
+	if(csiLen[i] > csiSen[i])
+	  toten[i] = sifsen[i] + csiLen[i];
+	else if(csiSen[i] > 0)
+	  toten[i] = sifsen[i] + csiSen[i];
+      }
+      
       for(int i=0;i<NDET;i++){
 	if(pidCut[i]!=NULL && pidCut[i]->IsInside(csiLen[i],sicorr[i])){//check change
 	  pid[i] = 0;
@@ -539,7 +553,7 @@ int main(int argc, char** argv){
 	  double althick = foilthick*foildensity*0.1/cos(alpha*deg2rad);
 	  range = deutFoil_e2r->Eval(ene);
 	  ene = deutFoil_r2e->Eval(range+althick);
-	  sireco[0][i] = ene;
+	  totreco[0][i] = ene;
 #else
 	  alpha = -90.-detectorangle+sitheta[i];
 #endif
@@ -547,7 +561,7 @@ int main(int argc, char** argv){
 	  double tathick = targetthick/2*targetdensity*0.1/cos(sitheta[i]*deg2rad);
 	  range = deutTarg_e2r->Eval(ene);
 	  ene = deutTarg_r2e->Eval(range+tathick);
-	  sireco[1][i] = ene;
+	  totreco[1][i] = ene;
 	}
 	else if(protCut[i]!=NULL && protCut[i]->IsInside(sitheta[i],sifsen[i])){
 	  pid[i] = 1;
@@ -557,7 +571,7 @@ int main(int argc, char** argv){
 	  double althick = foilthick*foildensity*0.1/cos(alpha*deg2rad);
 	  range = protFoil_e2r->Eval(ene);
 	  ene = protFoil_r2e->Eval(range+althick);
-	  sireco[0][i] = ene;
+	  totreco[0][i] = ene;
 #else
 	  alpha = -90.-detectorangle+sitheta[i];
 #endif
@@ -565,7 +579,7 @@ int main(int argc, char** argv){
 	  double tathick = targetthick/2*targetdensity*0.1/cos(sitheta[i]*deg2rad);
 	  range = protTarg_e2r->Eval(ene);
 	  ene = protTarg_r2e->Eval(range+tathick);
-	  sireco[1][i] = ene;
+	  totreco[1][i] = ene;
 	}
       }//energy loss reconstruction
       tr->Fill();
