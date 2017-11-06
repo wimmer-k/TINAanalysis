@@ -13,8 +13,10 @@
 #include <stdlib.h>
 #include <math.h>
 #include <map>
+#include <signal.h>
+#include <sys/time.h>
 
-//energy loss lib
+//energy loss, kinematics, and command line interface libraries
 #include "Reconstruction.hh"
 #include "Kinematics.hh"
 #include "CommandLineInterface.hh"
@@ -70,7 +72,13 @@ void calckinematics(double midtarget, char* detectorsetup);
 //pid cuts
 void readpidcuts(char* filename);
 
+//signal handling, enables ctrl-c to exit nicely
+bool signal_received = false;
+void signalhandler(int sig);
+double get_time();
 int main(int argc, char** argv){
+  double time_start = get_time();  
+  signal(SIGINT,signalhandler);
 #ifdef KYUSHU
   cout << "Turner compiled for Kyushu data!" << endl;
 #else
@@ -276,14 +284,18 @@ int main(int argc, char** argv){
   hraw[NADC+1] = new TH2F("tdcchmult_0","tdcchmult_0",64,0,64,16,0,16);
 
   while(estore->GetNextEvent()){ 
+    if(signal_received){
+      break;
+    }
     if(vlevel >1){
       cout << "-------------------------------------next event segments = "<<rawevent->GetNumSeg()<< endl;
     }
     if(neve == LastEvent)
       break;
-    if (neve%10000==0)
-      cout << neve << " events analyzed\r" << flush;
-
+    if(neve%10000==0){
+      double time_end = get_time();
+      cout << neve << " events analyzed, " << (Float_t)neve/(time_end - time_start) << " events/s\r" << flush;
+    }
     //clear 
     for(int i=0;i<32;i++){
       for(int j=0;j<NADC;j++)
@@ -540,8 +552,20 @@ int main(int argc, char** argv){
   for(int i=0;i<NADC;i++)
     cout << "adc"<<i<<" events " << adcevt[i] << endl;
   cout << "bug events " << bugevt << endl;
+  double time_end = get_time();
+  cout << "Total Run time: " << time_end - time_start << " s." << endl;
+  return 0;
 }
-
+void signalhandler(int sig){
+  if(sig == SIGINT)
+    signal_received = true;
+}
+double get_time(){  
+  struct timeval t;  
+  gettimeofday(&t, NULL);  
+  double d = t.tv_sec + (double) t.tv_usec/1000000;  
+  return d;  
+}  
 int geo2num(int geo){
   switch(geo){
   case ADC0:

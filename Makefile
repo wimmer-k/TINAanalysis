@@ -1,6 +1,5 @@
 .EXPORT_ALL_VARIABLES:
-
-.PHONY: clean all
+.PHONY: clean all 
 
 BIN_DIR = $(HOME)/bin
 LIB_DIR = $(HOME)/lib
@@ -28,17 +27,25 @@ CFLAGS += -Wno-unused-variable -Wno-write-strings
 
 CFLAGS += -UKYUSHU
 
-all: Turner CsIke
+SRCS = $(wildcard *.cc)
+PROG = $(patsubst %.cc,%,$(SRCS)) 
+all: $(PROG)
 
-Turner:	Turner.cc
+%:	%.cc
 	@echo "Compiling $@"
-	@$(CPP) $(CFLAGS) $(INCLUDES) $< $(LIBS) -o $(BIN_DIR)/$@ 
+	@$(CPP) $(CFLAGS) $(INCLUDES) $< $(LIBS) -o $@
+	@cp $@ $(BIN_DIR)/$@ 
 
-CsIke:	CsIke.cc
-	@echo "Compiling $@"
-	@$(CPP) $(CFLAGS) $(INCLUDES) $< $(LIBS) -o $(BIN_DIR)/$@ 
+#Turner:	Turner.cc
+#	@echo "Compiling $@"
+#	@$(CPP) $(CFLAGS) $(INCLUDES) $< $(LIBS) -o $(BIN_DIR)/$@ 
+#
+#CsIke:	CsIke.cc
+#	@echo "Compiling $@"
+#	@$(CPP) $(CFLAGS) $(INCLUDES) $< $(LIBS) -o $(BIN_DIR)/$@ 
 
 clean:
 	@echo "Cleaning up"
+	@rm -f $(PROG)
 	@rm -rf build doc
 	@rm -f inc/*~ src/*~ scripts/*~ *~

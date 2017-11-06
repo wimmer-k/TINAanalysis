@@ -12,7 +12,7 @@
 #include <signal.h>
 #include <sys/time.h>
 
-//energy loss lib
+//energy loss, kinematics, and command line interface libraries
 #include "Reconstruction.hh"
 #include "Kinematics.hh"
 #include "CommandLineInterface.hh"
@@ -288,16 +288,14 @@ int main(int argc, char** argv){
 
 }
 void signalhandler(int sig){
-  if (sig == SIGINT){
+  if(sig == SIGINT)
     signal_received = true;
-  }
 }
-
 double get_time(){  
-    struct timeval t;  
-    gettimeofday(&t, NULL);  
-    double d = t.tv_sec + (double) t.tv_usec/1000000;  
-    return d;  
+  struct timeval t;  
+  gettimeofday(&t, NULL);  
+  double d = t.tv_sec + (double) t.tv_usec/1000000;  
+  return d;  
 }  
 map<int,double> strip2thetamap(char* filename){
   ifstream infile;
