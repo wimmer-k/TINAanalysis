@@ -40,6 +40,11 @@ using namespace std;
 #define NDET 6
 #define NADC 5
 
+#define BEAMDEVICE 60
+#define TINADEVICE 0
+#define TOFDET 13
+#define PPACDet 15
+
 int vlevel =0;
 TSpline3* protTarg_e2r;
 TSpline3* protTarg_r2e;
@@ -336,121 +341,145 @@ int main(int argc, char** argv){
     for(int i=0;i<rawevent->GetNumSeg();i++){
       TArtRawSegmentObject *seg = rawevent->GetSegment(i);
       if(vlevel>1){
-	cout << "event " << neve << "segment " << i << "\tAddress " << seg->GetAddress() << "\tDevice " << seg->GetDevice() << "\tFocalPlane " << seg->GetFP() << "\tDetector " << seg->GetDetector() << "\tModule "<< seg->GetModule() << "\tnum data = " << seg->GetNumData() << endl;
+	cout << "event " << neve << "\tsegment " << i << "\tAddress " << seg->GetAddress() << "\tDevice " << seg->GetDevice() << "\tFocalPlane " << seg->GetFP() << "\tDetector " << seg->GetDetector() << "\tModule "<< seg->GetModule() << "\tnum data = " << seg->GetNumData() << endl;
       }
-      //for PID:
-      //dev 60, fp 0, det 12, geo 1 (moco + mtdc)  (13 instead of 12 for v1290) 
-      //ch 10 F3dia9Pad
-      //ch 26 F5dia9Pad
-
-      for(int j=0;j<seg->GetNumData();j++){
-	TArtRawDataObject *d = seg->GetData(j);
-	//get geometric address, channel and value
-	int geo = d->GetGeo(); 
-	int chan = d->GetCh();
-	int val = d->GetVal(); 
-	if(vlevel>1)
-	  cout << "geo: " << geo  << "\tchan: " << chan  << "\tval: " << val << endl;  
-	int num, det;
-	double en;
-	double ti;
-	switch(geo){
-	case ADC0:
-	case ADC1:
-	case ADC2:
-#ifndef KYUSHU
-	case ADC3:
-	case ADC4:
-#endif
-	  num = geo2num(geo); 
-	  hadadc[num] = true;
-	  adc[num][chan] = val;
-	  hraw[num]->Fill(chan,val);
-	  //if(val>0 && val<)
-	  adcmult++;
-	  if(val < ped[num][chan])
-	    continue;
-	  en = gain[num][chan]*(val+rand->Uniform(0,1)) + offs[num][chan];
-	  det = -1;
-#ifdef KYUSHU 
-	  //kyushu: adc1 and 2 for 4 YY1, adc0 for backsides and csi
-	  if(geo == ADC1)
-	    det = chan/16;
-	  if(geo == ADC2)
-	    det = chan/16+2;
-#else
-	  //OEDO: adc0,1 and 2 for 6 YY1, adc3 for backsides and csi
-	  if(geo == ADC0)
-	    det = chan/16;
-	  if(geo == ADC1)
-	    det = chan/16+2;
-	  if(geo == ADC2)
-	    det = chan/16+4;
-#endif
-	  if(det>-1&&en>0){
-	    simult[det]++;
-	    int ring = chmap[chan%16].first; // mapping to real strip number
-	    sirien[det][ring] = en;
-	    if(siring[det]<0 || en > sifsen[det]){
-	      siring[det] = ring;
-	      sitheta[det] = chmap[chan%16].second; // mapping to theta
-	      sifsen[det] = en;
-	      double alpha = 90.-detectorangle-sitheta[det];
-	      sicorr[det] = cos(alpha*deg2rad)*en;
+      if(seg->GetDevice()==BEAMDEVICE){
+	//for PID:
+	//dev 60, fp 0, det 12, geo 1 (moco + mtdc)  (13 instead of 12 for v1290) 
+	//ch 10 F3dia9Pad
+	//ch 26 F5dia9Pad
+	cout << "BEAM data! " << endl;
+	if(seg->GetDetector()==TOFDET){
+	  cout << "TOF detector" << endl;
+	  for(int j=0;j<seg->GetNumData();j++){
+	    TArtRawDataObject *d = seg->GetData(j);
+	    //get geometric address, channel and value
+	    int geo = d->GetGeo(); 
+	    int chan = d->GetCh();
+	    int val = d->GetVal(); 
+	    if(vlevel>1)
+	      cout << "geo: " << geo  << "\tchan: " << chan  << "\tval: " << val << endl;  
+	    if(geo==0){
+	      if(chan==10)
+		cout << "F3diaPad = " << val << endl;
+	      if(chan==26)
+		cout << "F5diaPad = " << val << endl;
 	    }
-	    if(vlevel>1)
-	      cout << "det: " << det  << "\tchan: " << chan  << "\tstrip: " << siring[det] << "\ten: " << en << endl;  
 	  }
+	}//tof detector
+      }//beam data
+      if(seg->GetDevice()==TINADEVICE){
+	if(vlevel>1)
+	  cout << "TINA data! " << endl;
+	for(int j=0;j<seg->GetNumData();j++){
+	  TArtRawDataObject *d = seg->GetData(j);
+	  //get geometric address, channel and value
+	  int geo = d->GetGeo(); 
+	  int chan = d->GetCh();
+	  int val = d->GetVal(); 
+	  if(vlevel>1)
+	    cout << "geo: " << geo  << "\tchan: " << chan  << "\tval: " << val << endl;  
+	  int num, det;
+	  double en;
+	  double ti;
+	  switch(geo){
+	  case ADC0:
+	  case ADC1:
+	  case ADC2:
+#ifndef KYUSHU
+	  case ADC3:
+	  case ADC4:
+#endif
+	    num = geo2num(geo); 
+	    hadadc[num] = true;
+	    adc[num][chan] = val;
+	    hraw[num]->Fill(chan,val);
+	    //if(val>0 && val<)
+	    adcmult++;
+	    if(val < ped[num][chan])
+	      continue;
+	    en = gain[num][chan]*(val+rand->Uniform(0,1)) + offs[num][chan];
+	    det = -1;
 #ifdef KYUSHU 
-	  else if(geo==ADC0){
-	    if(vlevel>1)
-	      cout << "geo: " << geo  << "\tchan: " << chan  << "\tval: " << val << endl; 
-	    if(chan>15 && chan<15+NDET+1)//check
-	      sibsen[chan-16] = en;
-	    else if(chan<NDET)
-	      csiSen[chan] = en;
-	  }
+	    //kyushu: adc1 and 2 for 4 YY1, adc0 for backsides and csi
+	    if(geo == ADC1)
+	      det = chan/16;
+	    if(geo == ADC2)
+	      det = chan/16+2;
 #else
-	  else if(geo==ADC3){
-	    if(chan<NDET)
-	      sibsen[chan] = en;
-	    else if(chan>15 && chan<16+NDET)
-	      csiSen[chan-16] = en;
-	    else if(chan>15+NDET && chan<16+2*NDET)
-	      csiLen[chan-16-NDET] = en;
-	  }
-	  else if(geo==ADC4){
-	    // cout << "ADC4 hit, should be empty/spare" << endl;
-	    // cout << "geo: " << geo  << "\tchan: " << chan  << "\tval: " << val << endl; 
-	  }
+	    //OEDO: adc0,1 and 2 for 6 YY1, adc3 for backsides and csi
+	    if(geo == ADC0)
+	      det = chan/16;
+	    if(geo == ADC1)
+	      det = chan/16+2;
+	    if(geo == ADC2)
+	      det = chan/16+4;
+#endif
+	    if(det>-1&&en>0){
+	      simult[det]++;
+	      int ring = chmap[chan%16].first; // mapping to real strip number
+	      sirien[det][ring] = en;
+	      if(siring[det]<0 || en > sifsen[det]){
+		siring[det] = ring;
+		sitheta[det] = chmap[chan%16].second; // mapping to theta
+		sifsen[det] = en;
+		double alpha = 90.-detectorangle-sitheta[det];
+		sicorr[det] = cos(alpha*deg2rad)*en;
+	      }
+	      if(vlevel>1)
+		cout << "det: " << det  << "\tchan: " << chan  << "\tstrip: " << siring[det] << "\ten: " << en << endl;  
+	    }
+#ifdef KYUSHU 
+	    else if(geo==ADC0){
+	      if(vlevel>1)
+		cout << "geo: " << geo  << "\tchan: " << chan  << "\tval: " << val << endl; 
+	      if(chan>15 && chan<15+NDET+1)//check
+		sibsen[chan-16] = en;
+	      else if(chan<NDET)
+		csiSen[chan] = en;
+	    }
+#else
+	    else if(geo==ADC3){
+	      if(chan<NDET)
+		sibsen[chan] = en;
+	      else if(chan>15 && chan<16+NDET)
+		csiSen[chan-16] = en;
+	      else if(chan>15+NDET && chan<16+2*NDET)
+		csiLen[chan-16-NDET] = en;
+	    }
+	    else if(geo==ADC4){
+	      // cout << "ADC4 hit, should be empty/spare" << endl;
+	      // cout << "geo: " << geo  << "\tchan: " << chan  << "\tval: " << val << endl; 
+	    }
 #endif	  
-	  haddata = true;
-	  if(vlevel>1)
-	    cout << neve <<"\tADC\t" << num << "\t" << chan << "\t" << val <<"\tadc[num][chan] = " << adc[num][chan]<< endl;
-	  break;
-	case TDC0:
-	  hadtdc = true;
-	  num = geo2num(geo); 
-	  //take first hit only, maybe add more later
-	  tdcchmult[chan]++;//since we read leading and trailing edge, this should be a multiple of 2
-	  if(tdc[chan]==0){
-	    tdc[chan] = val;
-	    hraw[NADC]->Fill(chan,val);
-	  }
-	  tdcmult++;
-	  if(vlevel>1)
-	    cout << neve <<"\tTDC\t"<< chan << "\t" << val <<"\ttdc[chan] = " << tdc[chan]<<"\ttdcchmult[chan] = " << tdcchmult[chan]<< endl;
-	  haddata = true;
-	  break;
-	case 99:
-	  hadbug = true;
-	  //if()
-	  cout << neve <<"\tBUG\t"<< chan << "\t" << val << endl;
-	default:
-	  cout << "unknown geo = " << geo << endl; 
-	  break;
-	}//geo
-      }//data
+	    haddata = true;
+	    if(vlevel>1)
+	      cout << neve <<"\tADC\t" << num << "\t" << chan << "\t" << val <<"\tadc[num][chan] = " << adc[num][chan]<< endl;
+	    break;
+	  case TDC0:
+	    hadtdc = true;
+	    num = geo2num(geo); 
+	    //take first hit only, maybe add more later
+	    tdcchmult[chan]++;//since we read leading and trailing edge, this should be a multiple of 2
+	    if(tdc[chan]==0){
+	      tdc[chan] = val;
+	      hraw[NADC]->Fill(chan,val);
+	    }
+	    tdcmult++;
+	    if(vlevel>1)
+	      cout << neve <<"\tTDC\t"<< chan << "\t" << val <<"\ttdc[chan] = " << tdc[chan]<<"\ttdcchmult[chan] = " << tdcchmult[chan]<< endl;
+	    haddata = true;
+	    break;
+	  case 99:
+	    hadbug = true;
+	    //if()
+	    cout << neve <<"\tBUG\t"<< chan << "\t" << val << endl;
+	  default:
+	    cout << "unknown geo = " << geo << endl; 
+	    break;
+	  }//geo
+	}//data
+      }//tina data
     }//segments
     // if(haddata){
     //   cout << "----------------------" << endl;
@@ -492,7 +521,7 @@ int main(int argc, char** argv){
     }
     if(hadbug)
       bugevt++;
-    
+    //reconstruc energy loss
     if(haddata){
       for(int i=0;i<NDET;i++){
 	if(pidCut[i]!=NULL && pidCut[i]->IsInside(csiLen[i],sicorr[i])){//check change
@@ -538,13 +567,12 @@ int main(int argc, char** argv){
 	  ene = protTarg_r2e->Eval(range+tathick);
 	  sireco[1][i] = ene;
 	}
-      }
-
+      }//energy loss reconstruction
       tr->Fill();
-    }
+    }//all segments
     estore->ClearData();
     neve++;
-  }
+  }//events
   fout->Write();
   fout->Close();
   cout << endl;
