@@ -2,8 +2,8 @@
 .PHONY: clean all 
 
 BIN_DIR = $(HOME)/bin
-LIB_DIR = $(HOME)/lib
-TARTSYS = /home/daq/tmp/anaroot/sources/Core/
+LIB_DIR = $(HOME)/local/lib
+TARTSYS = /home/oedo0/anaroot/sources/Core/
 COMMON_DIR = $(HOME)/TINAanalysis/common
 ELOSS_DIR = $(HOME)/TINAanalysis/ELoss
 KIN_DIR = $(HOME)/TINAanalysis/Reaction

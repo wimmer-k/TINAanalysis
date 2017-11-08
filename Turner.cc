@@ -94,6 +94,7 @@ int main(int argc, char** argv){
   char* calfile = NULL;
   char* pedfile = NULL;
   char* pidfile = NULL;
+  char* prefix = "./ridf/phys";//"./data/run";
   vlevel = 0;
   int LastEvent =-1;
   CommandLineInterface* interface = new CommandLineInterface();
@@ -104,6 +105,7 @@ int main(int argc, char** argv){
   interface->Add("-i", "pid cut file", &pidfile);  
   interface->Add("-le", "last event to be read", &LastEvent);  
   interface->Add("-v", "verbose level", &vlevel);  
+  interface->Add("-prefix", "prefix for data files", &prefix);  
 
   //check flags and complain if somethings is missing
   interface->CheckFlags(argc, argv);
@@ -124,7 +126,7 @@ int main(int argc, char** argv){
 
   //input and output files 
   cout <<" analyzing run " << RunNumber << endl;
-  char* inputfilename  = (char*)Form("data/run%04d.ridf",RunNumber);
+  char* inputfilename  = (char*)Form("%s%04d.ridf",prefix,RunNumber);
   char* outputfilename = (char*)Form("root/run%04d.root",RunNumber);
   TArtEventStore *estore = new TArtEventStore();
   estore->Open(inputfilename);
@@ -170,6 +172,10 @@ int main(int argc, char** argv){
   Int_t pid[NDET]; //check still kyushu type, id only for protons
 
 
+  Double_t f3tof;
+  Double_t f5tof;
+  Double_t f3f5tof;
+
   //raw
   tr->Branch("adc",&adc,Form("adc[%d][32]/I",NADC));
   tr->Branch("tdc",&tdc,"tdc[64]/I");
@@ -197,6 +203,10 @@ int main(int argc, char** argv){
   tr->Branch("csiLen",  &csiLen,  Form("csiLen[%d]/D",NDET));
   tr->Branch("csiLti",  &csiLti,  Form("csiLti[%d]/D",NDET));
 
+  //tof
+  tr->Branch("f3tof",    &f3tof,   "f3tof/D");
+  tr->Branch("f5tof",    &f5tof,   "f5tof/D");
+  tr->Branch("f3f5tof",  &f3f5tof, "f3f5tof/D");
 
   //define gain and offset parameters for calibration, (NADC) ADC, 1 TDC
   //pedestals == software thresholds for (NADC) adcs
@@ -277,7 +287,23 @@ int main(int argc, char** argv){
     if(pidCut[i]!=NULL)
       pidCut[i]->Write();
   }
- 
+  
+  //tof cuts
+  int f3refcut[2];
+  int f5refcut[2];
+  double tofoffset;
+  double tofpidcut[2];
+  char* namecut[2] = {"Lower","Upper"};
+  for(int i=0;i<2;i++){
+    f3refcut[i] = detsetup->GetValue("F3.Ref.%s.Cut",0);
+    f5refcut[i] = detsetup->GetValue("F5.Ref.%s.Cut",0);
+    tofpidcut[i] = detsetup->GetValue("F3F5.PID.%s.Cut",0.0);
+  }
+  tofoffset = detsetup->GetValue("F3F5.TOF.Offset",0.0);
+
+  int reftime = 0;
+  vector<int> f3times;
+  vector<int> f5times;
 
 
   int neve = 0;  // event number
@@ -294,6 +320,13 @@ int main(int argc, char** argv){
   hraw[NADC] = new TH2F("tdc_0","tdc_0",64,0,64,4096,0,32*4096);
   hraw[NADC+1] = new TH2F("tdcchmult_0","tdcchmult_0",64,0,64,16,0,16);
 
+  TH1F* reff3_tof = new TH1F("reff3_tof","reff3_tof",1000,64000,65000);
+  TH1F* reff5_tof = new TH1F("reff5_tof","reff5_tof",2000,00,168000);
+  TH1F* f3f5_tof_all = new TH1F("f3f5_tof_all","f3f5_tof_all",6000,0,300);
+  TH1F* f3f5_tof = new TH1F("f3f5_tof","f3f5_tof",6000,0,300);
+  TH1F* f3mult = new TH1F("f3mult","f3mult",100,0,100);
+  TH1F* f5mult = new TH1F("f5mult","f5mult",100,0,100);
+
   while(estore->GetNextEvent()){ 
     if(signal_received){
       break;
@@ -307,7 +340,9 @@ int main(int argc, char** argv){
       double time_end = get_time();
       cout << neve << " events analyzed, " << (Float_t)neve/(time_end - time_start) << " events/s\r" << flush;
     }
-    //clear 
+    //clear
+
+    //tina
     for(int i=0;i<32;i++){
       for(int j=0;j<NADC;j++)
 	adc[j][i] = 0;
@@ -327,21 +362,34 @@ int main(int argc, char** argv){
       sifsen[i] = sqrt(-1);
       sitheta[i] = sqrt(-1);
       sicorr[i] = sqrt(-1);
+      toten[i] = sqrt(-1);
       totreco[0][i] = sqrt(-1);
       totreco[1][i] = sqrt(-1);
       pid[i] = -1;
-      sibsen[i] = -sqrt(-1);
+      sibsen[i] = sqrt(-1);
       sibsti[i] = sqrt(-1);
       csiSen[i] = sqrt(-1);
       csiSti[i] = sqrt(-1);
       csiLen[i] = sqrt(-1);
       csiLti[i] = sqrt(-1);
     }
+    //tof
+    f3tof = sqrt(-1);
+    f5tof = sqrt(-1);
+    f3f5tof = sqrt(-1);
 
     bool haddata = false;
     bool hadadc[NADC] = {};
     bool hadtdc = false;
     bool hadbug = false;
+
+    reftime = 0;
+    f3times.clear();
+    f5times.clear();
+
+    bool refleading = true;
+    bool f3leading = true;
+    bool f5leading = true;
 
     //loop over the segments
     for(int i=0;i<rawevent->GetNumSeg();i++){
@@ -354,22 +402,45 @@ int main(int argc, char** argv){
 	//dev 60, fp 0, det 12, geo 1 (moco + mtdc)  (13 instead of 12 for v1290) 
 	//ch 10 F3dia9Pad
 	//ch 26 F5dia9Pad
-	cout << "BEAM data! " << endl;
+	if(vlevel>1)
+	  cout << "BEAM data! " << endl;
 	if(seg->GetDetector()==TOFDET){
-	  cout << "TOF detector" << endl;
+	  if(vlevel>1)
+	    cout << "TOF detector" << endl;
 	  for(int j=0;j<seg->GetNumData();j++){
 	    TArtRawDataObject *d = seg->GetData(j);
 	    //get geometric address, channel and value
 	    int geo = d->GetGeo(); 
 	    int chan = d->GetCh();
 	    int val = d->GetVal(); 
-	    if(vlevel>1)
+	    if(vlevel>2)
 	      cout << "geo: " << geo  << "\tchan: " << chan  << "\tval: " << val << endl;  
 	    if(geo==0){
-	      if(chan==10)
-		cout << "F3diaPad = " << val << endl;
-	      if(chan==26)
-		cout << "F5diaPad = " << val << endl;
+	      if(chan==0){
+		//cout << "Reference = " << val << endl;
+		if(refleading){
+		  reftime = val;
+		  refleading = false;
+		}
+	      }
+	      if(chan==10){
+		//cout << "F3diaPad = " << val << endl;
+		if(f3leading){
+		  f3times.push_back(val);
+		  f3leading = false;
+		}
+		else
+		  f3leading = true;
+	      }
+	      if(chan==26){
+		//cout << "F5diaPad = " << val << endl;
+		if(f5leading){
+		  f5times.push_back(val);
+		  f5leading = false;
+		}
+		else
+		  f5leading = true;
+	      }
 	    }
 	  }
 	}//tof detector
@@ -527,6 +598,36 @@ int main(int argc, char** argv){
     }
     if(hadbug)
       bugevt++;
+    
+    //tof
+    // cout << "time fo flights " << endl;
+    // cout << f3times.size() <<"\t" << f5times.size() << endl;
+    f3mult->Fill(f3times.size());
+    f5mult->Fill(f5times.size());
+    for(vector<int>::iterator f3 = f3times.begin(); f3 != f3times.end(); f3++){
+      //cout << *f3 << endl;
+      reff3_tof->Fill(reftime - *f3);
+      if( (reftime - *f3) < f3refcut[0] && (reftime - *f3) < f3refcut[1] )
+	f3tof = (*f3+rand->Uniform(0,1))*100./4096;
+      for(vector<int>::iterator f5 = f5times.begin(); f5 != f5times.end(); f5++){
+     	f3f5_tof_all->Fill((*f5+rand->Uniform(0,1) - (*f3+rand->Uniform(0,1)))*100./4096 + tofoffset);
+      } 
+    }
+    for(vector<int>::iterator f5 = f5times.begin(); f5 != f5times.end(); f5++){
+      //cout << *f5 << endl;
+      reff5_tof->Fill(reftime - *f5);
+      if( (reftime - *f5) < f5refcut[0] && (reftime - *f5) < f5refcut[1] )
+	f5tof = (*f5+rand->Uniform(0,1))*100./4096;
+    } 
+    
+    f3f5tof = f5tof - f3tof + tofoffset; 
+    f3tof = (reftime+rand->Uniform(0,1))*100./4096 - f3tof;
+    f5tof = (reftime+rand->Uniform(0,1))*100./4096 - f5tof;
+
+    f3f5_tof->Fill(f3f5tof);
+
+
+
     //reconstruc energy loss
     if(haddata){
       //calculate total energy
@@ -582,8 +683,11 @@ int main(int argc, char** argv){
 	  totreco[1][i] = ene;
 	}
       }//energy loss reconstruction
-      tr->Fill();
-    }//all segments
+
+      // cout << " filling tree only for tina modify here if needed!" << endl;
+      // tr->Fill();
+    }//hadtinadata
+    tr->Fill();
     estore->ClearData();
     neve++;
   }//events
