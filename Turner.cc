@@ -43,7 +43,7 @@ using namespace std;
 #define BEAMDEVICE 60
 #define TINADEVICE 0
 #define TOFDET 13
-#define PPACDet 15
+#define PPACDET 15
 
 int vlevel =0;
 TSpline3* protTarg_e2r;
@@ -73,9 +73,9 @@ map<int,pair<int,double> > ch2stripmap(char* filename);
 //energy losses
 double calcenergyloss(char* filename);
 //kinematics
-void calckinematics(double midtarget, char* detectorsetup);
+void calckinematics(double midtarget, char* settingsfile);
 //pid cuts
-void readpidcuts(char* filename);
+void readpidcuts(const char* filename);
 
 //signal handling, enables ctrl-c to exit nicely
 bool signal_received = false;
@@ -90,22 +90,16 @@ int main(int argc, char** argv){
   cout << "Turner compiled for OEDO day0!" << endl;
 #endif
   Int_t RunNumber = -1;
-  char* detectorsetup = NULL;
-  char* calfile = NULL;
-  char* pedfile = NULL;
-  char* pidfile = NULL;
+  char* settingsfile = NULL;
   char* prefix = "./ridf/phys";//"./data/run";
   vlevel = 0;
   int LastEvent =-1;
   CommandLineInterface* interface = new CommandLineInterface();
   interface->Add("-r", "run number", &RunNumber);
-  interface->Add("-d", "detector settings", &detectorsetup);
-  interface->Add("-c", "calibration parameters", &calfile);  
-  interface->Add("-p", "pedestal parameters", &pedfile);  
-  interface->Add("-i", "pid cut file", &pidfile);  
+  interface->Add("-s", "settings, beam, detector, calibration", &settingsfile);
   interface->Add("-le", "last event to be read", &LastEvent);  
   interface->Add("-v", "verbose level", &vlevel);  
-  interface->Add("-prefix", "prefix for data files", &prefix);  
+  interface->Add("-p", "prefix for data files", &prefix);  
 
   //check flags and complain if somethings is missing
   interface->CheckFlags(argc, argv);
@@ -113,16 +107,10 @@ int main(int argc, char** argv){
     cout << "invalid runnumber: " << RunNumber << endl;
     return 1;
   }
-  if(detectorsetup==NULL){
-    cout << "Error: no detectorsetup file given" << endl;
+  if(settingsfile==NULL){
+    cout << "Error: no settings file given" << endl;
     return -99;
   }
-  if(calfile==NULL)
-    cout << "Warning: no calibration parameters given!" << endl;
-  if(pedfile==NULL)
-    cout << "Warning: no pedestal parameters given!" << endl;
-  if(pidfile==NULL)
-    cout << "Warning: no PID cuts given!" << endl;
 
   //input and output files 
   cout <<" analyzing run " << RunNumber << endl;
@@ -171,10 +159,18 @@ int main(int argc, char** argv){
   //pid flag: 0 identified (proton), 1 E/theta pid proton, 2 E/theta pid deuteron
   Int_t pid[NDET]; //check still kyushu type, id only for protons
 
-
+  //tof
   Double_t f3tof;
   Double_t f5tof;
   Double_t f3f5tof;
+
+  //ppac position
+  double fe12x[2];
+  double fe12y[2];
+  double targetx;
+  double targety;
+  double targeta;
+  double targetb;
 
   //raw
   tr->Branch("adc",&adc,Form("adc[%d][32]/I",NADC));
@@ -208,6 +204,27 @@ int main(int argc, char** argv){
   tr->Branch("f5tof",    &f5tof,   "f5tof/D");
   tr->Branch("f3f5tof",  &f3f5tof, "f3f5tof/D");
 
+  //ppac positions
+  tr->Branch("fe12x",    &fe12x,   "fe12x[2]/D");
+  tr->Branch("fe12y",    &fe12y,   "fe12y[2]/D");
+  tr->Branch("targeta",  &targeta, "targeta/D");
+  tr->Branch("targetb",  &targetb, "targetb/D");
+  tr->Branch("targetx",  &targetx, "targetx/D");
+  tr->Branch("targety",  &targety, "targety/D");
+
+
+  TEnv* settings = new TEnv(settingsfile);
+  const char* calfile = settings->GetValue("Calibration.File","");
+  const char* pedfile = settings->GetValue("Pedestal.File","");
+  const char* pidfile = settings->GetValue("PID.Cut.File","");
+  if(strlen(calfile)==0)
+    cout << "Warning: no calibration parameters given!" << endl;
+  if(strlen(pedfile)==0)
+    cout << "Warning: no pedestal parameters given!" << endl;
+  if(strlen(pidfile)==0)
+    cout << "Warning: no PID cuts given!" << endl;
+
+
   //define gain and offset parameters for calibration, (NADC) ADC, 1 TDC
   //pedestals == software thresholds for (NADC) adcs
   //check: only 32 channels of tdc here, if we need more this needs to be adjusted
@@ -218,7 +235,7 @@ int main(int argc, char** argv){
   TEnv *pedestals = new TEnv(pedfile);
   for(int m=0;m<NDET;m++){
     for(int c=0;c<32;c++){
-      if(calfile==NULL){
+      if(strlen(calfile)==0){
 	gain[m][c] = 1.0;
 	offs[m][c] = 0.0;
       }
@@ -227,7 +244,7 @@ int main(int argc, char** argv){
 	offs[m][c] = cal->GetValue(Form("Offset.Module%d.Ch%d",m,c),0.0);
       }
       if(m<NADC){
-	if(pedfile==NULL)
+	if(strlen(pedfile)==0)
 	  ped[m][c] = 0.0;  
 	else
 	  ped[m][c] = pedestals->GetValue(Form("Pedestal.Module%d.Ch%d",m,c),0.0);
@@ -236,20 +253,19 @@ int main(int argc, char** argv){
     } 
     
   }
-  
+
   //reading in detector setup
   double detectorthick[NDET];
-  TEnv* detsetup = new TEnv(detectorsetup);
-  double foilthick = detsetup->GetValue("Foil.Thickness",36.0);
-  double targetthick = detsetup->GetValue("Target.Thickness",2.0);
-  double foildensity = detsetup->GetValue("Foil.Density",2.7);
-  double targetdensity = detsetup->GetValue("Target.Density",4.5);
-  double detectorangle = detsetup->GetValue("Detector.Angle",50.0);
+  double foilthick = settings->GetValue("Foil.Thickness",36.0);
+  double targetthick = settings->GetValue("Target.Thickness",2.0);
+  double foildensity = settings->GetValue("Foil.Density",2.7);
+  double targetdensity = settings->GetValue("Target.Density",4.5);
+  double detectorangle = settings->GetValue("Detector.Angle",50.0);
   for(int i=0;i<NDET;i++){
-    detectorthick[i] = detsetup->GetValue(Form("Detector.%d",i),300.0);
+    detectorthick[i] = settings->GetValue(Form("Detector.%d",i),300.0);
   }
 
-  string channelmap = detsetup->GetValue("Channel.Mapping", "channelmapping.dat");
+  string channelmap = settings->GetValue("Channel.Mapping", "channelmapping.dat");
   //initalize mapping from ADC channel to strip number and angle
   map<int,pair<int,double> > chmap = ch2stripmap((char*)channelmap.c_str());
   if(vlevel>0){
@@ -258,10 +274,10 @@ int main(int argc, char** argv){
   }
 
   //prepare the energy reconstruction
-  double emid = calcenergyloss(detectorsetup);
+  double emid = calcenergyloss(settingsfile);
 
   //calculate kinematics
-  calckinematics(emid,detectorsetup);
+  calckinematics(emid,settingsfile);
   fout->cd();
   vector<TSpline3*> dp;
   for(unsigned int i =0;i< dpkine.size();i++){
@@ -295,16 +311,28 @@ int main(int argc, char** argv){
   double tofpidcut[2];
   char* namecut[2] = {"Lower","Upper"};
   for(int i=0;i<2;i++){
-    f3refcut[i] = detsetup->GetValue("F3.Ref.%s.Cut",0);
-    f5refcut[i] = detsetup->GetValue("F5.Ref.%s.Cut",0);
-    tofpidcut[i] = detsetup->GetValue("F3F5.PID.%s.Cut",0.0);
+    f3refcut[i] = settings->GetValue("F3.Ref.%s.Cut",0);
+    f5refcut[i] = settings->GetValue("F5.Ref.%s.Cut",0);
+    tofpidcut[i] = settings->GetValue("F3F5.PID.%s.Cut",0.0);
   }
-  tofoffset = detsetup->GetValue("F3F5.TOF.Offset",0.0);
+  tofoffset = settings->GetValue("F3F5.TOF.Offset",0.0);
 
-  int reftime = 0;
-  vector<int> f3times;
-  vector<int> f5times;
+  //ppac parameters
+  double delayoffset[2][2];
+  double linecalib[2][2];
+  double ns2mm[2][2];
+  double ppacpos[2][3];
+  char* cxy[2] = {"X","Y"};
 
+  for(int p=0;p<2;p++){
+    for(int xy=0;xy<2;xy++){
+      delayoffset[p][xy] = settings->GetValue(Form("PPAC%d.%s.DelayOffset",p+1,cxy[xy]),0.0);
+      linecalib[p][xy] = settings->GetValue(Form("PPAC%d.%s.LineCalib",p+1,cxy[xy]),0.0);
+      ns2mm[p][xy] = settings->GetValue(Form("PPAC%d.%s.ns2mm",p+1,cxy[xy]),0.0);
+      ppacpos[p][xy] = settings->GetValue(Form("PPAC%d.Pos.%s",p+1,cxy[xy]),0.0);
+    }
+    ppacpos[p][2] = settings->GetValue(Form("PPAC%d.Pos.Z",p+1),0.0);
+  }
 
   int neve = 0;  // event number
   TRandom3 *rand = new TRandom3();
@@ -327,11 +355,16 @@ int main(int argc, char** argv){
   TH1F* f3mult = new TH1F("f3mult","f3mult",100,0,100);
   TH1F* f5mult = new TH1F("f5mult","f5mult",100,0,100);
 
+  TH1F* fe12_ppac1x = new TH1F("fe12_ppac1x","fe12_ppac1x",4000,-200,200);
+  TH1F* fe12_ppac1y = new TH1F("fe12_ppac1y","fe12_ppac1y",4000,-200,200);
+  TH1F* fe12_ppac2x = new TH1F("fe12_ppac2x","fe12_ppac2x",4000,-200,200);
+  TH1F* fe12_ppac2y = new TH1F("fe12_ppac2y","fe12_ppac2y",4000,-200,200);
+
   while(estore->GetNextEvent()){ 
     if(signal_received){
       break;
     }
-    if(vlevel >1){
+    if(vlevel >0){
       cout << "-------------------------------------next event segments = "<<rawevent->GetNumSeg()<< endl;
     }
     if(neve == LastEvent)
@@ -378,18 +411,34 @@ int main(int argc, char** argv){
     f5tof = sqrt(-1);
     f3f5tof = sqrt(-1);
 
+    //ppac position
+    fe12x[0] = sqrt(-1);;
+    fe12y[0] = sqrt(-1);;
+    fe12x[1] = sqrt(-1);;
+    fe12y[1] = sqrt(-1);;
+    targetx = sqrt(-1);;
+    targety = sqrt(-1);;
+    targeta = sqrt(-1);;
+    targetb = sqrt(-1);;
+
+    //temp data, not written to tree
     bool haddata = false;
     bool hadadc[NADC] = {};
     bool hadtdc = false;
     bool hadbug = false;
 
-    reftime = 0;
+    int reftime = 0;
+    vector<int> f3times;
+    vector<int> f5times;
     f3times.clear();
     f5times.clear();
 
     bool refleading = true;
     bool f3leading = true;
     bool f5leading = true;
+
+    int fe12xtime[2][2] = {{0,0},{0,0}};
+    int fe12ytime[2][2] = {{0,0},{0,0}};
 
     //loop over the segments
     for(int i=0;i<rawevent->GetNumSeg();i++){
@@ -442,8 +491,39 @@ int main(int argc, char** argv){
 		  f5leading = true;
 	      }
 	    }
-	  }
+	  }//data
 	}//tof detector
+	if(seg->GetDetector()==PPACDET){
+	  if(vlevel>1)
+	    cout << "PPAC detector" << endl;
+	  for(int j=0;j<seg->GetNumData();j++){
+	    TArtRawDataObject *d = seg->GetData(j);
+	    //get geometric address, channel and value
+	    int geo = d->GetGeo(); 
+	    int chan = d->GetCh();
+	    int val = d->GetVal(); 
+	    if(vlevel>2)
+	      cout << "geo: " << geo  << "\tchan: " << chan  << "\tval: " << val << endl;  
+	    //PPAC 1
+ 	    if(chan==17&&fe12xtime[0][0]==0)//PPAC1 X1
+	      fe12xtime[0][0]=val;
+ 	    if(chan==19&&fe12xtime[0][1]==0)//PPAC1 X2
+	      fe12xtime[0][1]=val;
+ 	    if(chan==18&&fe12ytime[0][0]==0)//PPAC1 Y1
+	      fe12ytime[0][0]=val;
+ 	    if(chan==20&&fe12ytime[0][1]==0)//PPAC1 Y2
+	      fe12ytime[0][1]=val;
+	    //PPAC2
+ 	    if(chan==22&&fe12xtime[1][0]==0)//PPAC2 X1
+	      fe12xtime[1][0]=val;
+ 	    if(chan==24&&fe12xtime[1][1]==0)//PPAC2 X2
+	      fe12xtime[1][1]=val;
+ 	    if(chan==23&&fe12ytime[1][0]==0)//PPAC2 Y1
+	      fe12ytime[1][0]=val;
+ 	    if(chan==25&&fe12ytime[1][1]==0)//PPAC2 Y2
+	      fe12ytime[1][1]=val;
+	  }	  
+	}//ppac detector	
       }//beam data
       if(seg->GetDevice()==TINADEVICE){
 	if(vlevel>1)
@@ -626,8 +706,42 @@ int main(int argc, char** argv){
 
     f3f5_tof->Fill(f3f5tof);
 
+    //ppac
+    if(vlevel>2){
+      cout << "PPAC1 X " << fe12xtime[0][0] << "\t" << fe12xtime[0][1] << endl;
+      cout << "PPAC1 Y " << fe12ytime[0][0] << "\t" << fe12ytime[0][1] << endl;
+      cout << "PPAC2 X " << fe12xtime[1][0] << "\t" << fe12xtime[1][1] << endl;
+      cout << "PPAC2 Y " << fe12ytime[1][0] << "\t" << fe12ytime[1][1] << endl;
+    }
+    /*
+    if(fe12x[0][0]>0&&fe12x[0][1]>0)
+      fe12_ppac1x->Fill((fe12x[0][0]+rand->Uniform(0,1)-(fe12x[0][1]+rand->Uniform(0,1)))*100./1024);
+    if(fe12y[0][0]>0&&fe12y[0][1]>0)
+      fe12_ppac1y->Fill((fe12y[0][0]+rand->Uniform(0,1)-(fe12y[0][1]+rand->Uniform(0,1)))*100./1024);
+    if(fe12x[1][0]>0&&fe12x[1][1]>0)
+      fe12_ppac2x->Fill((fe12x[1][0]+rand->Uniform(0,1)-(fe12x[1][1]+rand->Uniform(0,1)))*100./1024);
+    if(fe12y[1][0]>0&&fe12y[1][1]>0)
+      fe12_ppac2y->Fill((fe12y[1][0]+rand->Uniform(0,1)-(fe12y[1][1]+rand->Uniform(0,1)))*100./1024);
+    */
 
-
+    for(int p=0;p<2;p++){
+      if(fe12xtime[p][0]>0&&fe12xtime[p][1]>0){
+	fe12x[p] = (fe12xtime[p][0]+rand->Uniform(0,1)-(fe12xtime[p][1]+rand->Uniform(0,1)))*100./1024; //in ns
+	fe12x[p] += delayoffset[p][0] - linecalib[p][0];
+	fe12x[p] *= ns2mm[p][0]*0.5;
+	fe12x[p] -= ppacpos[p][0];	
+      }
+      if(fe12ytime[p][0]>0&&fe12ytime[p][1]>0){
+	fe12y[p] = (fe12ytime[p][0]+rand->Uniform(0,1)-(fe12ytime[p][1]+rand->Uniform(0,1)))*100./1024; //in ns
+	fe12y[p] += delayoffset[p][1] - linecalib[p][1];
+	fe12y[p] *= ns2mm[p][1]*0.5;
+	fe12y[p] -= ppacpos[p][1];
+      }
+    }
+    fe12_ppac1x->Fill(fe12x[0]);
+    fe12_ppac1y->Fill(fe12y[0]);
+    fe12_ppac2x->Fill(fe12x[1]);
+    fe12_ppac2y->Fill(fe12y[1]);
     //reconstruc energy loss
     if(haddata){
       //calculate total energy
@@ -759,20 +873,20 @@ map<int,pair<int,double> > ch2stripmap(char* filename){
   }
   return m;
 }
-double calcenergyloss(char *detectorsetup){
-  TEnv* detsetup = new TEnv(detectorsetup);
-  double foilthick = detsetup->GetValue("Foil.Thickness",36.0);
-  double targetthick = detsetup->GetValue("Target.Thickness",2.0);
-  double foildensity = detsetup->GetValue("Foil.Density",2.7);
-  double targetdensity = detsetup->GetValue("Target.Density",4.5);
-  double detectordensity = detsetup->GetValue("Detector.Density",2.33);
+double calcenergyloss(char *settingsfile){
+  TEnv* settings = new TEnv(settingsfile);
+  double foilthick = settings->GetValue("Foil.Thickness",36.0);
+  double targetthick = settings->GetValue("Target.Thickness",2.0);
+  double foildensity = settings->GetValue("Foil.Density",2.7);
+  double targetdensity = settings->GetValue("Target.Density",4.5);
+  double detectordensity = settings->GetValue("Detector.Density",2.33);
   double detectorthick[NDET];
   for(int i=0;i<NDET;i++){
-    detectorthick[i] = detsetup->GetValue(Form("Detector.%d",i),300.0);
+    detectorthick[i] = settings->GetValue(Form("Detector.%d",i),300.0);
   }
-  double ebeam = detsetup->GetValue("Beam.Energy",20.);
-  int Abeam = detsetup->GetValue("Beam.A",99);
-  int Zbeam = detsetup->GetValue("Beam.Z",12);
+  double ebeam = settings->GetValue("Beam.Energy",20.);
+  int Abeam = settings->GetValue("Beam.A",99);
+  int Zbeam = settings->GetValue("Beam.Z",12);
   ebeam*=Abeam;
 
   Compound *target;
@@ -878,10 +992,10 @@ double calcenergyloss(char *detectorsetup){
   cout << "calculated energy losses " << endl;
   return emid;
 }
-void calckinematics(double midtarget, char* detectorsetup){
-  TEnv* detsetup = new TEnv(detectorsetup);
-  int Abeam = detsetup->GetValue("Beam.A",99);
-  int Zbeam = detsetup->GetValue("Beam.Z",12);
+void calckinematics(double midtarget, char* settingsfile){
+  TEnv* settings = new TEnv(settingsfile);
+  int Abeam = settings->GetValue("Beam.A",99);
+  int Zbeam = settings->GetValue("Beam.Z",12);
 
   Nucleus *prot = new Nucleus(1,0);
   Nucleus *deut = new Nucleus(1,1);
@@ -896,13 +1010,13 @@ void calckinematics(double midtarget, char* detectorsetup){
 
   cout << "calculated kinematics " << endl;
 }
-void readpidcuts(char* filename){
+void readpidcuts(const char* filename){
   for(int i=0;i<NDET;i++){
     deutCut[i] = NULL;
     protCut[i] = NULL;
     pidCut[i] = NULL;
   }
-  if(filename ==NULL){
+  if(strlen(filename)==0){
     cout << "no PID cuts to read"<<endl;
     return;
   }
