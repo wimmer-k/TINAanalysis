@@ -28,7 +28,8 @@ using namespace std;
 #endif
 
 #define NDET 6
-#define RAWCSI 1
+#define NADC 5
+#define RAWCSI 0
 
 TSpline3* protDete_l2e[NDET][16];
 TSpline3* deutDete_l2e[NDET][16];
@@ -117,6 +118,10 @@ int main(int argc, char** argv){
 #endif
   TH2F* hsifsen_theta[NDET];
   TH2F* htotreco_theta[NDET];
+
+  TH2F* htotreco_theta_a;
+  TH2F* hsicorr_csi_a;
+
   //histograms
   for(unsigned short d=0;d<NDET;d++){
     if(RAWCSI){
@@ -161,9 +166,13 @@ int main(int argc, char** argv){
     hlist->Add(hcal_csiL[d]);
 #endif
   }
+  htotreco_theta_a = new TH2F("htotreco_theta_a","htotreco_theta_a",60,100,160,2000,0,40);hlist->Add(htotreco_theta_a);
+  hsicorr_csi_a = new TH2F("hsicorr_csi_a","hsicorr_csi_a",500,0,40,2000,0,20);hlist->Add(hsicorr_csi_a);
+
   TH2F* tdccorr = new TH2F("tdccorr","tdccorr",12,0,12,12,0,12);
   hlist->Add(tdccorr);
 
+  int adc[NADC][32];
   int tdc[64];
   int siring[NDET];
   double sitheta[NDET];
@@ -174,6 +183,7 @@ int main(int argc, char** argv){
   double csiLen[NDET];
 #endif
   double totreco[2][NDET];
+  tr->SetBranchAddress("adc",&adc);
   tr->SetBranchAddress("tdc",&tdc);
   tr->SetBranchAddress("siring",&siring);
   tr->SetBranchAddress("sitheta",&sitheta);
@@ -205,6 +215,10 @@ int main(int argc, char** argv){
 	(Float_t)i/(time_end - time_start) << " events/s " <<
 	(nentries-i)*(time_end - time_start)/(Float_t)i << "s to go \r" << flush;
     }
+    for(int c=0;c<32;c++){
+      for(int j=0;j<NADC;j++)
+	adc[j][c] = 0;
+    }
     for(unsigned short t=0;t<64;t++)
       tdc[t] = 0;
     for(unsigned short d=0;d<NDET;d++){
@@ -233,12 +247,25 @@ int main(int argc, char** argv){
       return 6;
     }
     nbytes += status;
+    if(RAWCSI){
+#ifdef KYUSHU 
+      for(int chan = 0; chan<NDET;chan++)
+	csiSen[chan] = adc[3][chan];
+#else
+      for(int chan = 16; chan<16+NDET;chan++)
+	csiSen[chan-16] = adc[3][chan];
+      for(int chan = 16+NDET; chan<16+2*NDET;chan++)
+	csiLen[chan-16-NDET] = adc[3][chan];
+#endif
+    }
     for(unsigned short d=0;d<NDET;d++){
       //cout << sifsen[d] << "\t "<< sibsen[d]<< "\t "<< csiSen[d] << endl;
       if(sifsen[d]>0)
 	hsifsen_theta[d]->Fill(sitheta[d],sifsen[d]);
-      if(totreco[1][d]>0)
+      if(totreco[1][d]>0){
 	htotreco_theta[d]->Fill(sitheta[d],totreco[1][d]);    
+	htotreco_theta_a->Fill(sitheta[d],totreco[1][d]);    
+      }
       if(sifsen[d]>0 && csiSen[d]>0){
 	hsifsen_csiS[d]->Fill(csiSen[d],sifsen[d]);
 	double alpha;
@@ -249,7 +276,9 @@ int main(int argc, char** argv){
 #endif
 	double ecorr = fabs(cos(alpha*deg2rad))*sifsen[d];
 	hsicorr_csiS[d]->Fill(csiSen[d],ecorr);
-	if(csiSCut[d] && csiSCut[d]->IsInside(csiSen[d],ecorr)){
+	hsicorr_csi_a->Fill(csiSen[d],ecorr);
+	//if(csiSCut[d] && csiSCut[d]->IsInside(csiSen[d],ecorr)){
+	if(csiSCut[d] && csiSCut[d]->IsInside(csiSen[d],sifsen[d])){
 	  //cout << d <<",\tE = "<< sifsen[d] << ",\tth = "<< sitheta[d]<< ",\tcsiraw = "<< csien[d] << endl;
 	  if(siring[d]>-1){
 	    double en = protDete_l2e[d][siring[d]]->Eval(sifsen[d]);
@@ -267,7 +296,9 @@ int main(int argc, char** argv){
 	alpha = -90.-detectorangle+sitheta[d];
 	double ecorr = fabs(cos(alpha*deg2rad))*sifsen[d];
 	hsicorr_csiL[d]->Fill(csiLen[d],ecorr);
-	if(csiLCut[d] && csiLCut[d]->IsInside(csiLen[d],ecorr)){
+	hsicorr_csi_a->Fill(csiLen[d],ecorr);
+	//if(csiLCut[d] && csiLCut[d]->IsInside(csiLen[d],ecorr)){
+	if(csiLCut[d] && csiLCut[d]->IsInside(csiLen[d],sifsen[d])){
 	  //cout << d <<",\tE = "<< sifsen[d] << ",\tth = "<< sitheta[d]<< ",\tcsiraw = "<< csien[d] << endl;
 	  if(siring[d]>-1){
 	    double en = protDete_l2e[d][siring[d]]->Eval(sifsen[d]);

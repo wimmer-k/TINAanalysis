@@ -6,6 +6,7 @@
 #include <TTree.h>
 #include <TObject.h>
 #include <TEnv.h>
+#include <TLorentzVector.h>
 #include <TRandom3.h>
 #include <iostream>
 #include <iomanip>
@@ -46,6 +47,8 @@ using namespace std;
 #define TINAFOCALPLANE 0
 #define TOFDET 13
 #define PPACDET 15
+
+#define OVERFLOWBINS 4080
 
 int vlevel =0;
 TSpline3* protTarg_e2r;
@@ -162,7 +165,9 @@ int main(int argc, char** argv){
   //reconstructed energy at target center, from sifsen + csi
   Double_t totreco[2][NDET]; //0 only foils, 1 foils and target energy loss reconstructed
   //pid flag: 0 identified (proton), 1 E/theta pid proton, 2 E/theta pid deuteron
-  Int_t pid[NDET]; //check still kyushu type, id only for protons
+  Int_t tinapid[NDET]; //check still kyushu type, id only for protons
+  //excitation energy
+  Double_t excen[NDET];
 
   //tof
   Double_t f3tof;
@@ -195,8 +200,9 @@ int main(int argc, char** argv){
   tr->Branch("sicorr",  &sicorr,  Form("sicorr[%d]/D",NDET));
   
   tr->Branch("toten",   &toten,   Form("toten[%d]/D",NDET));
-  tr->Branch("pid",     &pid,     Form("pid[%d]/I",NDET));
+  tr->Branch("tinapid", &tinapid, Form("tinapid[%d]/I",NDET));
   tr->Branch("totreco", &totreco, Form("totreco[2][%d]/D",NDET));
+  tr->Branch("excen",   &excen,   Form("excen[%d]/D",NDET));
 
   tr->Branch("sibsen",  &sibsen,  Form("sibsen[%d]/D",NDET));
   tr->Branch("sibsti",  &sibsti,  Form("sibsti[%d]/D",NDET));
@@ -299,6 +305,8 @@ int main(int argc, char** argv){
   TSpline3 *pp = ppkine->EvslabMeV(0,90,1,2);
   pp->SetName("pp");
   pp->Write();
+  Nucleus *prot = new Nucleus(1,0);
+
 
   //read in pid cuts
   readpidcuts(pidfile);
@@ -412,7 +420,8 @@ int main(int argc, char** argv){
       toten[i] = sqrt(-1);
       totreco[0][i] = sqrt(-1);
       totreco[1][i] = sqrt(-1);
-      pid[i] = -1;
+      tinapid[i] = -1;
+      excen[i] = sqrt(-1);
       sibsen[i] = sqrt(-1);
       sibsti[i] = sqrt(-1);
       csiSen[i] = sqrt(-1);
@@ -571,6 +580,8 @@ int main(int argc, char** argv){
 	    //if(val>0 && val<)
 	    adcmult++;
 	    if(val < ped[num][chan])
+	      continue;
+	    if(val > OVERFLOWBINS)
 	      continue;
 	    en = gain[num][chan]*(val+rand->Uniform(0,1)) + offs[num][chan];
 	    det = -1;
@@ -782,8 +793,15 @@ int main(int argc, char** argv){
       //calculate total energy
       for(int i=0;i<NDET;i++){
 #ifndef KYUSHU 
-	if(csiLen[i] > csiSen[i])
+	if(csiLen[i] > 0 && csiSen[i] >0){
+	  if(csiLen[i]>csiSen[i])
+	    toten[i] = sifsen[i] + csiLen[i];
+	  else
+	    toten[i] = sifsen[i] + csiSen[i];
+	}
+	else if(csiLen[i] > 0){
 	  toten[i] = sifsen[i] + csiLen[i];
+	}
 	else if(csiSen[i] > 0)
 	  toten[i] = sifsen[i] + csiSen[i];
 	else
@@ -799,22 +817,22 @@ int main(int argc, char** argv){
       for(int i=0;i<NDET;i++){
 #ifdef KYUSHU
 	if(csiSen[i] > 0 && pidSCut[i]!=NULL && pidSCut[i]->IsInside(csiSen[i],sicorr[i]))
-	  pid[i] = 0;
+	  tinapid[i] = 0;
 #else
- 	if(csiLen[i] > csiSen[i] && pidLCut[i]!=NULL && pidLCut[i]->IsInside(csiLen[i],sicorr[i]))
-	  pid[i] = 0;
+ 	if(csiLen[i] > 0 && pidLCut[i]!=NULL && pidLCut[i]->IsInside(csiLen[i],sicorr[i]))
+	  tinapid[i] = 0;
  	else if(csiSen[i] > 0 && pidSCut[i]!=NULL && pidSCut[i]->IsInside(csiSen[i],sicorr[i]))
-	  pid[i] = 0;
+	  tinapid[i] = 0;
 #endif
 	else if(deutCut[i]!=NULL && deutCut[i]->IsInside(sitheta[i],sifsen[i]))
-	  pid[i] = 2;
+	  tinapid[i] = 2;
 	else if(protCut[i]!=NULL && protCut[i]->IsInside(sitheta[i],sifsen[i]))
-	  pid[i] = 1;
+	  tinapid[i] = 1;
 
 	double ene = toten[i];
 	double range;
 	double alpha;
-	if(pid[i]==0||pid[i]==1){
+	if(tinapid[i]==0||tinapid[i]==1){
 #ifdef KYUHSU
 	  alpha = 90.-detectorangle-sitheta[i];
 	  double althick = foilthick*foildensity*0.1/fabs(cos(alpha*deg2rad));
@@ -830,7 +848,7 @@ int main(int argc, char** argv){
 	  ene = protTarg_r2e->Eval(range+tathick);
 	  totreco[1][i] = ene;
 	}//proton
-	if(pid[i]==2){
+	if(tinapid[i]==2){
 	  //reconstruct energy loss in the al foil
 #ifdef KYUHSU
 	  alpha = 90.-detectorangle-sitheta[i];
@@ -847,7 +865,17 @@ int main(int argc, char** argv){
 	  ene = deutTarg_r2e->Eval(range+tathick);
 	  totreco[1][i] = ene;
 	}//deuteron
-      }//energy loss reconstruction
+	//kinematics excitation energy
+	if(tinapid[i]==0){//identified proton
+	  TVector3 recodir(0,0,1);
+	  recodir.SetTheta(sitheta[i]*deg2rad);
+	  TLorentzVector recoLV(recodir, totreco[1][i]*1000+prot->GetMass()*1000);
+	  if(recoLV.Mag()>0)
+	    recoLV.SetRho( sqrt( (totreco[1][i]+prot->GetMass())*(totreco[1][i]+prot->GetMass()) - prot->GetMass()*prot->GetMass() )*1000 );
+	  if(dpkine.at(0))
+	    excen[i] = dpkine.at(0)->GetExcEnergy(recoLV)/1000; // to MeV
+	}//identified proton
+      }//ndet
     }//hadtinadata
     tr->Fill();
     estore->ClearData();
