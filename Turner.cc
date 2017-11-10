@@ -42,6 +42,8 @@ using namespace std;
 
 #define BEAMDEVICE 60
 #define TINADEVICE 0
+#define BEAMFOCALPLANE 0
+#define TINAFOCALPLANE 0
 #define TOFDET 13
 #define PPACDET 15
 
@@ -64,7 +66,8 @@ vector<Kinematics*> dpkine;
 
 TCutG* deutCut[NDET];
 TCutG* protCut[NDET];
-TCutG* pidCut[NDET];
+TCutG* pidSCut[NDET];
+TCutG* pidLCut[NDET];
 
 //geometric address to module number
 int geo2num(int geo);
@@ -149,8 +152,10 @@ int main(int argc, char** argv){
   //csi
   Double_t csiSen[NDET];
   Double_t csiSti[NDET];
+#ifndef KYUSHU 
   Double_t csiLen[NDET];
   Double_t csiLti[NDET];
+#endif
 
   //total energy for sifsen and csi
   Double_t toten[NDET];
@@ -163,6 +168,7 @@ int main(int argc, char** argv){
   Double_t f3tof;
   Double_t f5tof;
   Double_t f3f5tof;
+  Int_t beampid;
 
   //ppac position
   double fe12x[2];
@@ -196,13 +202,15 @@ int main(int argc, char** argv){
   tr->Branch("sibsti",  &sibsti,  Form("sibsti[%d]/D",NDET));
   tr->Branch("csiSen",  &csiSen,  Form("csiSen[%d]/D",NDET));
   tr->Branch("csiSti",  &csiSti,  Form("csiSti[%d]/D",NDET));
+#ifndef KYUSHU 
   tr->Branch("csiLen",  &csiLen,  Form("csiLen[%d]/D",NDET));
   tr->Branch("csiLti",  &csiLti,  Form("csiLti[%d]/D",NDET));
-
+#endif
   //tof
   tr->Branch("f3tof",    &f3tof,   "f3tof/D");
   tr->Branch("f5tof",    &f5tof,   "f5tof/D");
   tr->Branch("f3f5tof",  &f3f5tof, "f3f5tof/D");
+  tr->Branch("beampid",  &beampid, "beampid/I");
 
   //ppac positions
   tr->Branch("fe12x",    &fe12x,   "fe12x[2]/D");
@@ -300,8 +308,10 @@ int main(int argc, char** argv){
       deutCut[i]->Write();
     if(protCut[i]!=NULL)
       protCut[i]->Write();
-    if(pidCut[i]!=NULL)
-      pidCut[i]->Write();
+    if(pidSCut[i]!=NULL)
+      pidSCut[i]->Write();
+    if(pidLCut[i]!=NULL)
+      pidLCut[i]->Write();
   }
   
   //tof cuts
@@ -311,10 +321,11 @@ int main(int argc, char** argv){
   double tofpidcut[2];
   char* namecut[2] = {"Lower","Upper"};
   for(int i=0;i<2;i++){
-    f3refcut[i] = settings->GetValue("F3.Ref.%s.Cut",0);
-    f5refcut[i] = settings->GetValue("F5.Ref.%s.Cut",0);
-    tofpidcut[i] = settings->GetValue("F3F5.PID.%s.Cut",0.0);
+    f3refcut[i] = settings->GetValue(Form("F3.Ref.%s.Cut",namecut[i]),0);
+    f5refcut[i] = settings->GetValue(Form("F5.Ref.%s.Cut",namecut[i]),0);
+    tofpidcut[i] = settings->GetValue(Form("F3F5.PID.%s.Cut",namecut[i]),0.0);
   }
+  cout << " beam pid cut " << tofpidcut[0] << " to " << tofpidcut[1] << " ns " << endl;
   tofoffset = settings->GetValue("F3F5.TOF.Offset",0.0);
 
   //ppac parameters
@@ -322,6 +333,7 @@ int main(int argc, char** argv){
   double linecalib[2][2];
   double ns2mm[2][2];
   double ppacpos[2][3];
+  double targetpos;
   char* cxy[2] = {"X","Y"};
 
   for(int p=0;p<2;p++){
@@ -333,7 +345,7 @@ int main(int argc, char** argv){
     }
     ppacpos[p][2] = settings->GetValue(Form("PPAC%d.Pos.Z",p+1),0.0);
   }
-
+  targetpos = settings->GetValue("Target.Pos.Z",0.0);
   int neve = 0;  // event number
   TRandom3 *rand = new TRandom3();
 
@@ -348,10 +360,12 @@ int main(int argc, char** argv){
   hraw[NADC] = new TH2F("tdc_0","tdc_0",64,0,64,4096,0,32*4096);
   hraw[NADC+1] = new TH2F("tdcchmult_0","tdcchmult_0",64,0,64,16,0,16);
 
-  TH1F* reff3_tof = new TH1F("reff3_tof","reff3_tof",1000,64000,65000);
-  TH1F* reff5_tof = new TH1F("reff5_tof","reff5_tof",2000,00,168000);
-  TH1F* f3f5_tof_all = new TH1F("f3f5_tof_all","f3f5_tof_all",6000,0,300);
-  TH1F* f3f5_tof = new TH1F("f3f5_tof","f3f5_tof",6000,0,300);
+  // TH1F* reff3_tof = new TH1F("reff3_tof","reff3_tof",1000,64000,65000);
+  // TH1F* reff5_tof = new TH1F("reff5_tof","reff5_tof",2000,00,168000);
+  TH1F* reff3_tof = new TH1F("reff3_tof","reff3_tof",2000,00,200000);
+  TH1F* reff5_tof = new TH1F("reff5_tof","reff5_tof",2000,00,200000);
+  TH1F* f3f5_tof_all = new TH1F("f3f5_tof_all","f3f5_tof_all",6000,-300,300);
+  TH1F* f3f5_tof = new TH1F("f3f5_tof","f3f5_tof",6000,-300,300);
   TH1F* f3mult = new TH1F("f3mult","f3mult",100,0,100);
   TH1F* f5mult = new TH1F("f5mult","f5mult",100,0,100);
 
@@ -403,13 +417,16 @@ int main(int argc, char** argv){
       sibsti[i] = sqrt(-1);
       csiSen[i] = sqrt(-1);
       csiSti[i] = sqrt(-1);
+#ifndef KYUSHU 
       csiLen[i] = sqrt(-1);
       csiLti[i] = sqrt(-1);
+#endif
     }
     //tof
     f3tof = sqrt(-1);
     f5tof = sqrt(-1);
     f3f5tof = sqrt(-1);
+    beampid = 0;
 
     //ppac position
     fe12x[0] = sqrt(-1);;
@@ -422,7 +439,7 @@ int main(int argc, char** argv){
     targetb = sqrt(-1);;
 
     //temp data, not written to tree
-    bool haddata = false;
+    bool hadTINA = false;
     bool hadadc[NADC] = {};
     bool hadtdc = false;
     bool hadbug = false;
@@ -446,7 +463,7 @@ int main(int argc, char** argv){
       if(vlevel>1){
 	cout << "event " << neve << "\tsegment " << i << "\tAddress " << seg->GetAddress() << "\tDevice " << seg->GetDevice() << "\tFocalPlane " << seg->GetFP() << "\tDetector " << seg->GetDetector() << "\tModule "<< seg->GetModule() << "\tnum data = " << seg->GetNumData() << endl;
       }
-      if(seg->GetDevice()==BEAMDEVICE){
+      if(seg->GetDevice()==BEAMDEVICE && seg->GetFP()==BEAMFOCALPLANE){
 	//for PID:
 	//dev 60, fp 0, det 12, geo 1 (moco + mtdc)  (13 instead of 12 for v1290) 
 	//ch 10 F3dia9Pad
@@ -525,7 +542,7 @@ int main(int argc, char** argv){
 	  }	  
 	}//ppac detector	
       }//beam data
-      if(seg->GetDevice()==TINADEVICE){
+      if(seg->GetDevice()==TINADEVICE && seg->GetFP()==TINAFOCALPLANE){
 	if(vlevel>1)
 	  cout << "TINA data! " << endl;
 	for(int j=0;j<seg->GetNumData();j++){
@@ -580,8 +597,13 @@ int main(int argc, char** argv){
 		siring[det] = ring;
 		sitheta[det] = chmap[chan%16].second; // mapping to theta
 		sifsen[det] = en;
-		double alpha = 90.-detectorangle-sitheta[det];
-		sicorr[det] = cos(alpha*deg2rad)*en;
+		double alpha;
+#ifdef KYUSHU
+		alpha = 90.-detectorangle-sitheta[det];
+#else
+		alpha = -90.-detectorangle+sitheta[det];
+#endif
+		sicorr[det] = fabs(cos(alpha*deg2rad))*en;
 	      }
 	      if(vlevel>1)
 		cout << "det: " << det  << "\tchan: " << chan  << "\tstrip: " << siring[det] << "\ten: " << en << endl;  
@@ -609,7 +631,7 @@ int main(int argc, char** argv){
 	      // cout << "geo: " << geo  << "\tchan: " << chan  << "\tval: " << val << endl; 
 	    }
 #endif	  
-	    haddata = true;
+	    hadTINA = true;
 	    if(vlevel>1)
 	      cout << neve <<"\tADC\t" << num << "\t" << chan << "\t" << val <<"\tadc[num][chan] = " << adc[num][chan]<< endl;
 	    break;
@@ -625,20 +647,20 @@ int main(int argc, char** argv){
 	    tdcmult++;
 	    if(vlevel>1)
 	      cout << neve <<"\tTDC\t"<< chan << "\t" << val <<"\ttdc[chan] = " << tdc[chan]<<"\ttdcchmult[chan] = " << tdcchmult[chan]<< endl;
-	    haddata = true;
+	    hadTINA = true;
 	    break;
 	  case 99:
 	    hadbug = true;
 	    //if()
 	    cout << neve <<"\tBUG\t"<< chan << "\t" << val << endl;
 	  default:
-	    cout << "unknown geo = " << geo << endl; 
+	    cout << "unknown geo = " << geo << " in TINAdevice and focal plane" << endl; 
 	    break;
 	  }//geo
 	}//data
       }//tina data
     }//segments
-    // if(haddata){
+    // if(hadTINA){
     //   cout << "----------------------" << endl;
     // }
     if(hadtdc){
@@ -687,7 +709,7 @@ int main(int argc, char** argv){
     for(vector<int>::iterator f3 = f3times.begin(); f3 != f3times.end(); f3++){
       //cout << *f3 << endl;
       reff3_tof->Fill(reftime - *f3);
-      if( (reftime - *f3) < f3refcut[0] && (reftime - *f3) < f3refcut[1] )
+      if( (reftime - *f3) > f3refcut[0] && (reftime - *f3) < f3refcut[1] )
 	f3tof = (*f3+rand->Uniform(0,1))*100./4096;
       for(vector<int>::iterator f5 = f5times.begin(); f5 != f5times.end(); f5++){
      	f3f5_tof_all->Fill((*f5+rand->Uniform(0,1) - (*f3+rand->Uniform(0,1)))*100./4096 + tofoffset);
@@ -696,7 +718,7 @@ int main(int argc, char** argv){
     for(vector<int>::iterator f5 = f5times.begin(); f5 != f5times.end(); f5++){
       //cout << *f5 << endl;
       reff5_tof->Fill(reftime - *f5);
-      if( (reftime - *f5) < f5refcut[0] && (reftime - *f5) < f5refcut[1] )
+      if( (reftime - *f5) > f5refcut[0] && (reftime - *f5) < f5refcut[1] )
 	f5tof = (*f5+rand->Uniform(0,1))*100./4096;
     } 
     
@@ -705,6 +727,8 @@ int main(int argc, char** argv){
     f5tof = (reftime+rand->Uniform(0,1))*100./4096 - f5tof;
 
     f3f5_tof->Fill(f3f5tof);
+    if(f3f5tof > tofpidcut[0] && f3f5tof < tofpidcut[1])
+      beampid = 1;
 
     //ppac
     if(vlevel>2){
@@ -735,55 +759,65 @@ int main(int argc, char** argv){
 	fe12y[p] = (fe12ytime[p][0]+rand->Uniform(0,1)-(fe12ytime[p][1]+rand->Uniform(0,1)))*100./1024; //in ns
 	fe12y[p] += delayoffset[p][1] - linecalib[p][1];
 	fe12y[p] *= ns2mm[p][1]*0.5;
-	fe12y[p] -= ppacpos[p][1];
+	fe12y[p] -= ppacpos[p][1]; 
       }
     }
     fe12_ppac1x->Fill(fe12x[0]);
     fe12_ppac1y->Fill(fe12y[0]);
     fe12_ppac2x->Fill(fe12x[1]);
     fe12_ppac2y->Fill(fe12y[1]);
+
+    //extrapolate to target
+    if(!isnan(fe12x[0]) && !isnan(fe12x[1])){
+      targeta = atan((fe12x[1] - fe12x[0])/(ppacpos[1][2]-ppacpos[0][2]))*1000.; //in mrad
+      targetx = fe12x[1] + (targetpos - ppacpos[1][2])*tan(targeta/1000);
+    }
+    if(!isnan(fe12y[0]) && !isnan(fe12y[1])){
+      targetb = atan((fe12y[1] - fe12y[0])/(ppacpos[1][2]-ppacpos[0][2]))*1000.; //in mrad
+      targety = fe12y[1] + (targetpos - ppacpos[1][2])*tan(targetb/1000);
+    }
+
     //reconstruc energy loss
-    if(haddata){
+    if(hadTINA){
       //calculate total energy
       for(int i=0;i<NDET;i++){
+#ifndef KYUSHU 
 	if(csiLen[i] > csiSen[i])
 	  toten[i] = sifsen[i] + csiLen[i];
 	else if(csiSen[i] > 0)
 	  toten[i] = sifsen[i] + csiSen[i];
+	else
+	  toten[i] = sifsen[i];
+#else
+	if(csiSen[i] > 0)
+	  toten[i] = sifsen[i] + csiSen[i];
+	else
+	  toten[i] = sifsen[i];
+#endif
       }
       
       for(int i=0;i<NDET;i++){
-	if(pidCut[i]!=NULL && pidCut[i]->IsInside(csiLen[i],sicorr[i])){//check change
+#ifdef KYUSHU
+	if(csiSen[i] > 0 && pidSCut[i]!=NULL && pidSCut[i]->IsInside(csiSen[i],sicorr[i]))
 	  pid[i] = 0;
-	  continue;
-	}
+#else
+ 	if(csiLen[i] > csiSen[i] && pidLCut[i]!=NULL && pidLCut[i]->IsInside(csiLen[i],sicorr[i]))
+	  pid[i] = 0;
+ 	else if(csiSen[i] > 0 && pidSCut[i]!=NULL && pidSCut[i]->IsInside(csiSen[i],sicorr[i]))
+	  pid[i] = 0;
+#endif
+	else if(deutCut[i]!=NULL && deutCut[i]->IsInside(sitheta[i],sifsen[i]))
+	  pid[i] = 2;
+	else if(protCut[i]!=NULL && protCut[i]->IsInside(sitheta[i],sifsen[i]))
+	  pid[i] = 1;
+
+	double ene = toten[i];
 	double range;
 	double alpha;
-	if(deutCut[i]!=NULL && deutCut[i]->IsInside(sitheta[i],sifsen[i])){
-	  pid[i] = 2;
-	  double ene = sifsen[i];
-	  //reconstruct energy loss in the al foil
+	if(pid[i]==0||pid[i]==1){
 #ifdef KYUHSU
 	  alpha = 90.-detectorangle-sitheta[i];
-	  double althick = foilthick*foildensity*0.1/cos(alpha*deg2rad);
-	  range = deutFoil_e2r->Eval(ene);
-	  ene = deutFoil_r2e->Eval(range+althick);
-	  totreco[0][i] = ene;
-#else
-	  alpha = -90.-detectorangle+sitheta[i];
-#endif
-	  //reconstruct energy loss in half the target
-	  double tathick = targetthick/2*targetdensity*0.1/cos(sitheta[i]*deg2rad);
-	  range = deutTarg_e2r->Eval(ene);
-	  ene = deutTarg_r2e->Eval(range+tathick);
-	  totreco[1][i] = ene;
-	}
-	else if(protCut[i]!=NULL && protCut[i]->IsInside(sitheta[i],sifsen[i])){
-	  pid[i] = 1;
-	  double ene = sifsen[i];
-#ifdef KYUHSU
-	  alpha = 90.-detectorangle-sitheta[i];
-	  double althick = foilthick*foildensity*0.1/cos(alpha*deg2rad);
+	  double althick = foilthick*foildensity*0.1/fabs(cos(alpha*deg2rad));
 	  range = protFoil_e2r->Eval(ene);
 	  ene = protFoil_r2e->Eval(range+althick);
 	  totreco[0][i] = ene;
@@ -791,15 +825,29 @@ int main(int argc, char** argv){
 	  alpha = -90.-detectorangle+sitheta[i];
 #endif
 	  //reconstruct energy loss in half the target
-	  double tathick = targetthick/2*targetdensity*0.1/cos(sitheta[i]*deg2rad);
+	  double tathick = targetthick/2*targetdensity*0.1/fabs(cos(sitheta[i]*deg2rad));
 	  range = protTarg_e2r->Eval(ene);
 	  ene = protTarg_r2e->Eval(range+tathick);
 	  totreco[1][i] = ene;
-	}
+	}//proton
+	if(pid[i]==2){
+	  //reconstruct energy loss in the al foil
+#ifdef KYUHSU
+	  alpha = 90.-detectorangle-sitheta[i];
+	  double althick = foilthick*foildensity*0.1/fabs(cos(alpha*deg2rad));
+	  range = deutFoil_e2r->Eval(ene);
+	  ene = deutFoil_r2e->Eval(range+althick);
+	  totreco[0][i] = ene;
+#else
+	  alpha = -90.-detectorangle+sitheta[i];
+#endif
+	  //reconstruct energy loss in half the target
+	  double tathick = targetthick/2*targetdensity*0.1/fabs(cos(sitheta[i]*deg2rad));
+	  range = deutTarg_e2r->Eval(ene);
+	  ene = deutTarg_r2e->Eval(range+tathick);
+	  totreco[1][i] = ene;
+	}//deuteron
       }//energy loss reconstruction
-
-      // cout << " filling tree only for tina modify here if needed!" << endl;
-      // tr->Fill();
     }//hadtinadata
     tr->Fill();
     estore->ClearData();
@@ -1014,7 +1062,8 @@ void readpidcuts(const char* filename){
   for(int i=0;i<NDET;i++){
     deutCut[i] = NULL;
     protCut[i] = NULL;
-    pidCut[i] = NULL;
+    pidSCut[i] = NULL;
+    pidLCut[i] = NULL;
   }
   if(strlen(filename)==0){
     cout << "no PID cuts to read"<<endl;
@@ -1024,7 +1073,8 @@ void readpidcuts(const char* filename){
   for(int i=0;i<NDET;i++){
     deutCut[i] = (TCutG*)fc->Get(Form("deut%d",i));
     protCut[i] = (TCutG*)fc->Get(Form("prot%d",i));
-    pidCut[i] = (TCutG*)fc->Get(Form("csi%d",i));
+    pidSCut[i] = (TCutG*)fc->Get(Form("csiS%d",i));
+    pidLCut[i] = (TCutG*)fc->Get(Form("csiL%d",i));
   }
   cout << "read PID cuts"<<endl;
 }

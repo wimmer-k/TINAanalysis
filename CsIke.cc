@@ -27,8 +27,8 @@ using namespace std;
 #define deg2rad                       (TMath::Pi())/180.
 #endif
 
-#define NDET 4
-#define RAWCSI 0
+#define NDET 6
+#define RAWCSI 1
 
 TSpline3* protDete_l2e[NDET][16];
 TSpline3* deutDete_l2e[NDET][16];
@@ -116,7 +116,7 @@ int main(int argc, char** argv){
   TH2F* hcal_csiL[NDET];
 #endif
   TH2F* hsifsen_theta[NDET];
-  TH2F* hsireco_theta[NDET];
+  TH2F* htotreco_theta[NDET];
   //histograms
   for(unsigned short d=0;d<NDET;d++){
     if(RAWCSI){
@@ -125,9 +125,9 @@ int main(int argc, char** argv){
       hsibsen_csiS[d] = new TH2F(Form("hsibsen_csiS_%d",d),Form("hsibsen_csiS_%d",d),512,0,4096,2000,0,20);hlist->Add(hsibsen_csiS[d]);
     }
     else{
-      hsifsen_csiS[d] = new TH2F(Form("hsifsen_csiS_%d",d),Form("hsifsen_csiS_%d",d),500,0,20,2000,0,20);hlist->Add(hsifsen_csiS[d]);
-      hsicorr_csiS[d] = new TH2F(Form("hsicorr_csiS_%d",d),Form("hsicorr_csiS_%d",d),500,0,20,2000,0,20);hlist->Add(hsicorr_csiS[d]);
-      hsibsen_csiS[d] = new TH2F(Form("hsibsen_csiS_%d",d),Form("hsibsen_csiS_%d",d),500,0,20,2000,0,20);hlist->Add(hsibsen_csiS[d]);
+      hsifsen_csiS[d] = new TH2F(Form("hsifsen_csiS_%d",d),Form("hsifsen_csiS_%d",d),500,0,40,2000,0,20);hlist->Add(hsifsen_csiS[d]);
+      hsicorr_csiS[d] = new TH2F(Form("hsicorr_csiS_%d",d),Form("hsicorr_csiS_%d",d),500,0,40,2000,0,20);hlist->Add(hsicorr_csiS[d]);
+      hsibsen_csiS[d] = new TH2F(Form("hsibsen_csiS_%d",d),Form("hsibsen_csiS_%d",d),500,0,40,2000,0,20);hlist->Add(hsibsen_csiS[d]);
     }
 #ifndef KYUSHU
     if(RAWCSI){
@@ -136,23 +136,28 @@ int main(int argc, char** argv){
       hsibsen_csiL[d] = new TH2F(Form("hsibsen_csiL_%d",d),Form("hsibsen_csiL_%d",d),512,0,4096,2000,0,20);hlist->Add(hsibsen_csiL[d]);
     }
     else{
-      hsifsen_csiL[d] = new TH2F(Form("hsifsen_csiL_%d",d),Form("hsifsen_csiL_%d",d),500,0,20,2000,0,20);hlist->Add(hsifsen_csiL[d]);
-      hsicorr_csiL[d] = new TH2F(Form("hsicorr_csiL_%d",d),Form("hsicorr_csiL_%d",d),500,0,20,2000,0,20);hlist->Add(hsicorr_csiL[d]);
-      hsibsen_csiL[d] = new TH2F(Form("hsibsen_csiL_%d",d),Form("hsibsen_csiL_%d",d),500,0,20,2000,0,20);hlist->Add(hsibsen_csiL[d]);
+      hsifsen_csiL[d] = new TH2F(Form("hsifsen_csiL_%d",d),Form("hsifsen_csiL_%d",d),500,0,40,2000,0,20);hlist->Add(hsifsen_csiL[d]);
+      hsicorr_csiL[d] = new TH2F(Form("hsicorr_csiL_%d",d),Form("hsicorr_csiL_%d",d),500,0,40,2000,0,20);hlist->Add(hsicorr_csiL[d]);
+      hsibsen_csiL[d] = new TH2F(Form("hsibsen_csiL_%d",d),Form("hsibsen_csiL_%d",d),500,0,40,2000,0,20);hlist->Add(hsibsen_csiL[d]);
     }
 #endif
+#ifdef KYUSHU
     hsifsen_theta[d] = new TH2F(Form("hsifsen_theta_%d",d),Form("hsifsen_theta_%d",d),55,25,80,2000,0,20);hlist->Add(hsifsen_theta[d]);
-    hsireco_theta[d] = new TH2F(Form("hsireco_theta_%d",d),Form("hsireco_theta_%d",d),55,25,80,2000,0,20);hlist->Add(hsireco_theta[d]);
+    htotreco_theta[d] = new TH2F(Form("htotreco_theta_%d",d),Form("htotreco_theta_%d",d),55,25,80,2000,0,40);hlist->Add(htotreco_theta[d]);
+#else
+    hsifsen_theta[d] = new TH2F(Form("hsifsen_theta_%d",d),Form("hsifsen_theta_%d",d),60,100,160,2000,0,20);hlist->Add(hsifsen_theta[d]);
+    htotreco_theta[d] = new TH2F(Form("htotreco_theta_%d",d),Form("htotreco_theta_%d",d),60,100,160,2000,0,40);hlist->Add(htotreco_theta[d]);
+#endif
     if(RAWCSI)
-      hcal_csiS[d] = new TH2F(Form("hcal_csiS_%d",d),Form("hcal_csiS_%d",d),512,0,4096,2000,0,20);
+      hcal_csiS[d] = new TH2F(Form("hcal_csiS_%d",d),Form("hcal_csiS_%d",d),512,0,4096,2000,0,40);
     else
-      hcal_csiS[d] = new TH2F(Form("hcal_csiS_%d",d),Form("hcal_csiS_%d",d),500,0,20,2000,0,20);
+      hcal_csiS[d] = new TH2F(Form("hcal_csiS_%d",d),Form("hcal_csiS_%d",d),500,0,40,2000,0,40);
     hlist->Add(hcal_csiS[d]);
 #ifndef KYUSHU
     if(RAWCSI)
-      hcal_csiL[d] = new TH2F(Form("hcal_csiL_%d",d),Form("hcal_csiL_%d",d),512,0,4096,2000,0,20);
+      hcal_csiL[d] = new TH2F(Form("hcal_csiL_%d",d),Form("hcal_csiL_%d",d),512,0,4096,2000,0,40);
     else
-      hcal_csiL[d] = new TH2F(Form("hcal_csiL_%d",d),Form("hcal_csiL_%d",d),500,0,20,2000,0,20);
+      hcal_csiL[d] = new TH2F(Form("hcal_csiL_%d",d),Form("hcal_csiL_%d",d),500,0,40,2000,0,40);
     hlist->Add(hcal_csiL[d]);
 #endif
   }
@@ -168,13 +173,13 @@ int main(int argc, char** argv){
 #ifndef KYUSHU
   double csiLen[NDET];
 #endif
-  double sireco[2][NDET];
+  double totreco[2][NDET];
   tr->SetBranchAddress("tdc",&tdc);
   tr->SetBranchAddress("siring",&siring);
   tr->SetBranchAddress("sitheta",&sitheta);
   tr->SetBranchAddress("sifsen",&sifsen);
   tr->SetBranchAddress("sibsen",&sibsen);
-  tr->SetBranchAddress("sireco",&sireco);
+  tr->SetBranchAddress("totreco",&totreco);
   tr->SetBranchAddress("csiSen",&csiSen);
 #ifndef KYUSHU
   tr->SetBranchAddress("csiLen",&csiLen);
@@ -206,8 +211,8 @@ int main(int argc, char** argv){
       siring[d] = -1;
       sitheta[d] = NAN;
       sifsen[d] = NAN;
-      sireco[0][d] = NAN;
-      sireco[1][d] = NAN;
+      totreco[0][d] = NAN;
+      totreco[1][d] = NAN;
       sibsen[d] = NAN;
       csiSen[d] = NAN;
 #ifndef KYUSHU
@@ -232,13 +237,19 @@ int main(int argc, char** argv){
       //cout << sifsen[d] << "\t "<< sibsen[d]<< "\t "<< csiSen[d] << endl;
       if(sifsen[d]>0)
 	hsifsen_theta[d]->Fill(sitheta[d],sifsen[d]);
-      if(sireco[1][d]>0)
-	hsireco_theta[d]->Fill(sitheta[d],sireco[1][d]);    
+      if(totreco[1][d]>0)
+	htotreco_theta[d]->Fill(sitheta[d],totreco[1][d]);    
       if(sifsen[d]>0 && csiSen[d]>0){
 	hsifsen_csiS[d]->Fill(csiSen[d],sifsen[d]);
-	double alpha = 90.-detectorangle-sitheta[d];
-	hsicorr_csiS[d]->Fill(csiSen[d],cos(alpha*deg2rad)*sifsen[d]);
-	if(csiSCut[d] && csiLCut[d]->IsInside(csiSen[d],sifsen[d])){
+	double alpha;
+#ifdef KYUSHU
+	alpha = 90.-detectorangle-sitheta[d];
+#else
+	alpha = -90.-detectorangle+sitheta[d];
+#endif
+	double ecorr = fabs(cos(alpha*deg2rad))*sifsen[d];
+	hsicorr_csiS[d]->Fill(csiSen[d],ecorr);
+	if(csiSCut[d] && csiSCut[d]->IsInside(csiSen[d],ecorr)){
 	  //cout << d <<",\tE = "<< sifsen[d] << ",\tth = "<< sitheta[d]<< ",\tcsiraw = "<< csien[d] << endl;
 	  if(siring[d]>-1){
 	    double en = protDete_l2e[d][siring[d]]->Eval(sifsen[d]);
@@ -249,6 +260,25 @@ int main(int argc, char** argv){
       }//si and csi en >0
       if(sibsen[d]>0 && csiSen[d]>0)
 	hsibsen_csiS[d]->Fill(csiSen[d],sibsen[d]);
+#ifndef KYUSHU
+      if(sifsen[d]>0 && csiLen[d]>0){
+	hsifsen_csiL[d]->Fill(csiLen[d],sifsen[d]);
+	double alpha;
+	alpha = -90.-detectorangle+sitheta[d];
+	double ecorr = fabs(cos(alpha*deg2rad))*sifsen[d];
+	hsicorr_csiL[d]->Fill(csiLen[d],ecorr);
+	if(csiLCut[d] && csiLCut[d]->IsInside(csiLen[d],ecorr)){
+	  //cout << d <<",\tE = "<< sifsen[d] << ",\tth = "<< sitheta[d]<< ",\tcsiraw = "<< csien[d] << endl;
+	  if(siring[d]>-1){
+	    double en = protDete_l2e[d][siring[d]]->Eval(sifsen[d]);
+	    //cout << siring[d] << "\t" << sifsen[d] << "\t" << en << endl;
+	    hcal_csiL[d]->Fill(csiLen[d],en-sifsen[d]);
+	  }
+	}
+      }//si and csi en >0
+      if(sibsen[d]>0 && csiLen[d]>0)
+	hsibsen_csiL[d]->Fill(csiLen[d],sibsen[d]);
+#endif
     }//ndet
     for(int c1=startcsitdc;c1<startcsitdc+12;c1++){
       for(int c2=startcsitdc;c2<startcsitdc+12;c2++){
@@ -348,12 +378,17 @@ void calcenergyloss(char* detectorsetup){
     detectorthick[d] *= detedensity*0.1;
     cout << "calculating energy loss of " <<  prot->GetSymbol() << ", " << deut->GetSymbol() << " in detector " << d << " d = " << detectorthick[d] << " mg/cm^2" << endl;
     for(int s=0;s<16;s++){
-      double alpha = 90.-detectorangle-strmap[s];
+      double alpha;
+#ifdef KYUSHU
+	alpha = 90.-detectorangle-strmap[s];
+#else
+	alpha = -90.-detectorangle+strmap[s];
+#endif
       if(DEBUG)
 	cout << s << "\t" << alpha << "\t" << cos(alpha*deg2rad) << endl;
-      protDete->SetTargetThickness(detectorthick[d]/cos(alpha*deg2rad));
+      protDete->SetTargetThickness(detectorthick[d]/fabs(cos(alpha*deg2rad)));
       protDete_l2e[d][s] = protDete->EnergyLoss2Energy(50,0.1);
-      deutDete->SetTargetThickness(detectorthick[d]/cos(alpha*deg2rad));
+      deutDete->SetTargetThickness(detectorthick[d]/fabs(cos(alpha*deg2rad)));
       deutDete_l2e[d][s] = deutDete->EnergyLoss2Energy(50,0.1);
     }
   }
