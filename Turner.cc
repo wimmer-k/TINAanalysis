@@ -39,14 +39,19 @@ using namespace std;
 #define TIMEREF 0
 
 #define NDET 6
+#define NSTRIPS 16
 #define NADC 5
 
 #define BEAMDEVICE 60
 #define TINADEVICE 0
+#define S1DEVICE 11
 #define BEAMFOCALPLANE 0
 #define TINAFOCALPLANE 0
+#define S1FOCALPLANE 21
 #define TOFDET 13
 #define PPACDET 15
+#define S1DET 31
+#define S1PADS 2 // up to 12
 
 #define OVERFLOWBINS 4080
 
@@ -69,6 +74,7 @@ vector<Kinematics*> dpkine;
 
 TCutG* deutCut[NDET];
 TCutG* protCut[NDET];
+TCutG* kineCut;
 TCutG* pidSCut[NDET];
 TCutG* pidLCut[NDET];
 
@@ -76,6 +82,9 @@ TCutG* pidLCut[NDET];
 int geo2num(int geo);
 //map adc ch to strip number and angle
 map<int,pair<int,double> > ch2stripmap(char* filename);
+Double_t stripDist[NSTRIPS];
+Double_t stripTheta[NSTRIPS];
+
 //energy losses
 double calcenergyloss(char* filename);
 //kinematics
@@ -167,8 +176,11 @@ int main(int argc, char** argv){
   //pid flag: 0 identified (proton), 1 E/theta pid proton, 2 E/theta pid deuteron
   Int_t tinapid[NDET]; //check still kyushu type, id only for protons
   //excitation energy
+  Double_t theta[2][NDET]; // for excen correction
   Double_t excen[NDET];
+  Double_t excencorr[2][NDET]; // 0 position on target, 1 position and angle
 
+#ifndef KYUSHU 
   //tof
   Double_t f3tof;
   Double_t f5tof;
@@ -176,12 +188,27 @@ int main(int argc, char** argv){
   Int_t beampid;
 
   //ppac position
-  double fe12x[2];
-  double fe12y[2];
-  double targetx;
-  double targety;
-  double targeta;
-  double targetb;
+  Int_t fe12tref;
+  Int_t fe12traw[2];
+  Double_t fe12t[2];
+  Double_t fe12x[2];
+  Double_t fe12y[2];
+  Double_t targetx;
+  Double_t targety;
+  Double_t targeta;
+  Double_t targetb;
+
+  Int_t s1tref;
+  Int_t s1traw[2]; // anodes
+  Double_t s1t[2]; 
+  Double_t s1x[2];
+  Double_t s1y[2];
+  Double_t s1paden[S1PADS]; 
+  
+  Int_t registr;
+#endif
+  
+  Double_t targetz; // defined in settings
 
   //raw
   tr->Branch("adc",&adc,Form("adc[%d][32]/I",NADC));
@@ -202,7 +229,9 @@ int main(int argc, char** argv){
   tr->Branch("toten",   &toten,   Form("toten[%d]/D",NDET));
   tr->Branch("tinapid", &tinapid, Form("tinapid[%d]/I",NDET));
   tr->Branch("totreco", &totreco, Form("totreco[2][%d]/D",NDET));
+  tr->Branch("theta", &theta, Form("theta[2][%d]/D",NDET));
   tr->Branch("excen",   &excen,   Form("excen[%d]/D",NDET));
+  tr->Branch("excencorr",   &excencorr,   Form("excencorr[2][%d]/D",NDET));
 
   tr->Branch("sibsen",  &sibsen,  Form("sibsen[%d]/D",NDET));
   tr->Branch("sibsti",  &sibsti,  Form("sibsti[%d]/D",NDET));
@@ -211,26 +240,43 @@ int main(int argc, char** argv){
 #ifndef KYUSHU 
   tr->Branch("csiLen",  &csiLen,  Form("csiLen[%d]/D",NDET));
   tr->Branch("csiLti",  &csiLti,  Form("csiLti[%d]/D",NDET));
-#endif
+
+  //trigger register
+  tr->Branch("registr", &registr, "registr/I");
+
   //tof
-  tr->Branch("f3tof",    &f3tof,   "f3tof/D");
-  tr->Branch("f5tof",    &f5tof,   "f5tof/D");
-  tr->Branch("f3f5tof",  &f3f5tof, "f3f5tof/D");
-  tr->Branch("beampid",  &beampid, "beampid/I");
+  tr->Branch("f3tof",   &f3tof,   "f3tof/D");
+  tr->Branch("f5tof",   &f5tof,   "f5tof/D");
+  tr->Branch("f3f5tof", &f3f5tof, "f3f5tof/D");
+  tr->Branch("beampid", &beampid, "beampid/I");
 
   //ppac positions
-  tr->Branch("fe12x",    &fe12x,   "fe12x[2]/D");
-  tr->Branch("fe12y",    &fe12y,   "fe12y[2]/D");
-  tr->Branch("targeta",  &targeta, "targeta/D");
-  tr->Branch("targetb",  &targetb, "targetb/D");
-  tr->Branch("targetx",  &targetx, "targetx/D");
-  tr->Branch("targety",  &targety, "targety/D");
+  tr->Branch("fe12tref",   &fe12tref,   "fe12tref/I");
+  tr->Branch("fe12traw",   &fe12traw,   "fe12traw[2]/I");
+  tr->Branch("fe12t",   &fe12t,   "fe12t[2]/D");
+  tr->Branch("fe12x",   &fe12x,   "fe12x[2]/D");
+  tr->Branch("fe12y",   &fe12y,   "fe12y[2]/D");
+  tr->Branch("targeta", &targeta, "targeta/D");
+  tr->Branch("targetb", &targetb, "targetb/D");
+  tr->Branch("targetx", &targetx, "targetx/D");
+  tr->Branch("targety", &targety, "targety/D");
+  
+  //s1 stuff
+  tr->Branch("s1tref",   &s1tref,   "s1tref/I");
+  tr->Branch("s1traw",   &s1traw,   "s1traw[2]/I");
+  tr->Branch("s1t",   &s1t,   "s1t[2]/D");
+  tr->Branch("s1x",   &s1x,   "s1x[2]/D");
+  tr->Branch("s1y",   &s1y,   "s1y[2]/D");
+  //tr->Branch("s1padraw",   &s1padraw,   "s1padraw[2]/I");
+  tr->Branch("s1paden",   &s1paden,   "s1paden[2]/D");
+#endif
 
 
   TEnv* settings = new TEnv(settingsfile);
   const char* calfile = settings->GetValue("Calibration.File","");
   const char* pedfile = settings->GetValue("Pedestal.File","");
   const char* pidfile = settings->GetValue("PID.Cut.File","");
+  targetz = settings->GetValue("Target.Pos.Z", 0.0);
   if(strlen(calfile)==0)
     cout << "Warning: no calibration parameters given!" << endl;
   if(strlen(pedfile)==0)
@@ -275,8 +321,10 @@ int main(int argc, char** argv){
   double foildensity = settings->GetValue("Foil.Density",2.7);
   double targetdensity = settings->GetValue("Target.Density",4.5);
   double detectorangle = settings->GetValue("Detector.Angle",50.0);
+  double detectorphi[NDET];
   for(int i=0;i<NDET;i++){
     detectorthick[i] = settings->GetValue(Form("Detector.%d",i),300.0);
+    detectorphi[i] = settings->GetValue(Form("Detector.Phi.%d", i), 0.0);
   }
 
   string channelmap = settings->GetValue("Channel.Mapping", "channelmapping.dat");
@@ -284,7 +332,7 @@ int main(int argc, char** argv){
   map<int,pair<int,double> > chmap = ch2stripmap((char*)channelmap.c_str());
   if(vlevel>0){
     for(int i=0;i<16;i++)
-      cout << i << "\t" << chmap[i].first<< "\t" << chmap[i].second << endl;
+      cout << i << "\t" << chmap[i].first << "\t" << chmap[i].second << "\t" << stripTheta[i] << "\t" << stripDist[i] << endl;
   }
 
   //prepare the energy reconstruction
@@ -316,44 +364,90 @@ int main(int argc, char** argv){
       deutCut[i]->Write();
     if(protCut[i]!=NULL)
       protCut[i]->Write();
+    if(kineCut!=NULL)
+      kineCut->Write();
     if(pidSCut[i]!=NULL)
       pidSCut[i]->Write();
     if(pidLCut[i]!=NULL)
       pidLCut[i]->Write();
   }
-  
+#ifndef KYUSHU  
   //tof cuts
-  int f3refcut[2];
-  int f5refcut[2];
+  int f3refcut[3][2];
+  int f5refcut[3][2];
   double tofoffset;
   double tofpidcut[2];
+  
+  int triggercut[3][2];
+
   char* namecut[2] = {"Lower","Upper"};
+  char* trigname[3] = {"TINA","F3DS","PPAC"};
   for(int i=0;i<2;i++){
-    f3refcut[i] = settings->GetValue(Form("F3.Ref.%s.Cut",namecut[i]),0);
-    f5refcut[i] = settings->GetValue(Form("F5.Ref.%s.Cut",namecut[i]),0);
     tofpidcut[i] = settings->GetValue(Form("F3F5.PID.%s.Cut",namecut[i]),0.0);
+    for(int t=0;t<3;t++){
+      triggercut[t][i] = settings->GetValue(Form("Trigger.%s.%s.Cut",trigname[t],namecut[i]),0);
+      f3refcut[t][i] = settings->GetValue(Form("F3.Ref.%s.%s.Cut",trigname[t],namecut[i]),0);
+      f5refcut[t][i] = settings->GetValue(Form("F5.Ref.%s.%s.Cut",trigname[t],namecut[i]),0);
+      if(f3refcut[t][i]==0)
+	f3refcut[t][i] = settings->GetValue(Form("F3.Ref.%s.Cut",namecut[i]),0);
+      if(f5refcut[t][i]==0)
+	f5refcut[t][i] = settings->GetValue(Form("F5.Ref.%s.Cut",namecut[i]),0);
+    }
   }
   cout << " beam pid cut " << tofpidcut[0] << " to " << tofpidcut[1] << " ns " << endl;
   tofoffset = settings->GetValue("F3F5.TOF.Offset",0.0);
 
-  //ppac parameters
-  double delayoffset[2][2];
-  double linecalib[2][2];
-  double ns2mm[2][2];
-  double ppacpos[2][3];
-  double targetpos;
+  //fe12 ppac parameters
+  double fe12delayoffset[2][2];
+  double fe12linecalib[2][2];
+  double fe12ns2mm[2][2];
+  double fe12ppacpos[2][3];
+  //double targetz;
   char* cxy[2] = {"X","Y"};
 
   for(int p=0;p<2;p++){
     for(int xy=0;xy<2;xy++){
-      delayoffset[p][xy] = settings->GetValue(Form("PPAC%d.%s.DelayOffset",p+1,cxy[xy]),0.0);
-      linecalib[p][xy] = settings->GetValue(Form("PPAC%d.%s.LineCalib",p+1,cxy[xy]),0.0);
-      ns2mm[p][xy] = settings->GetValue(Form("PPAC%d.%s.ns2mm",p+1,cxy[xy]),0.0);
-      ppacpos[p][xy] = settings->GetValue(Form("PPAC%d.Pos.%s",p+1,cxy[xy]),0.0);
+      fe12delayoffset[p][xy] = settings->GetValue(Form("FE12.PPAC%d.%s.DelayOffset",p+1,cxy[xy]),0.0);
+      fe12linecalib[p][xy] = settings->GetValue(Form("FE12.PPAC%d.%s.LineCalib",p+1,cxy[xy]),0.0);
+      fe12ns2mm[p][xy] = settings->GetValue(Form("FE12.PPAC%d.%s.ns2mm",p+1,cxy[xy]),0.0);
+      fe12ppacpos[p][xy] = settings->GetValue(Form("FE12.PPAC%d.Pos.%s",p+1,cxy[xy]),0.0);
     }
-    ppacpos[p][2] = settings->GetValue(Form("PPAC%d.Pos.Z",p+1),0.0);
+    fe12ppacpos[p][2] = settings->GetValue(Form("FE12.PPAC%d.Pos.Z",p+1),0.0);
   }
-  targetpos = settings->GetValue("Target.Pos.Z",0.0);
+  //targetz = settings->GetValue("Target.Pos.Z",0.0);
+
+  // s1
+  double s1delayoffset[2][2];
+  double s1linecalib[2][2];
+  double s1ns2mm[2][2];
+  double s1ppacpos[2][3];
+
+  for(int p=0;p<2;p++){
+    for(int xy=0;xy<2;xy++){
+      s1delayoffset[p][xy] = settings->GetValue(Form("S1.PPAC%d.%s.DelayOffset",p+1,cxy[xy]),0.0);
+      s1linecalib[p][xy] = settings->GetValue(Form("S1.PPAC%d.%s.LineCalib",p+1,cxy[xy]),0.0);
+      s1ns2mm[p][xy] = settings->GetValue(Form("S1.PPAC%d.%s.ns2mm",p+1,cxy[xy]),0.0);
+      s1ppacpos[p][xy] = settings->GetValue(Form("S1.PPAC%d.Pos.%s",p+1,cxy[xy]),0.0);
+    }
+    s1ppacpos[p][2] = settings->GetValue(Form("S1.PPAC%d.Pos.Z",p+1),0.0);
+  }
+
+  double s1ic_lowercut[S1PADS], s1ic_uppercut[S1PADS];
+  for(int p=0;p<S1PADS;p++){
+    s1ic_lowercut[p] = settings->GetValue(Form("S1.IC.PAD%d.Lower.Cut",p), 0.0);
+    s1ic_uppercut[p] = settings->GetValue(Form("S1.IC.PAD%d.Upper.Cut",p), 999999.0);
+  }
+
+  // time cuts
+  double fe12tcut[1][2]; // [detector][lower/upper], use only one global cut so far
+  double s1tcut[1][2];
+  fe12tcut[0][0] = settings->GetValue("FE12.Time.Lower.Cut", -999999);
+  fe12tcut[0][1] = settings->GetValue("FE12.Time.Upper.Cut",  999999);
+  s1tcut[0][0] = settings->GetValue("S1.Time.Lower.Cut", -999999);
+  s1tcut[0][1] = settings->GetValue("S1.Time.Upper.Cut",  999999);
+
+#endif
+
   int neve = 0;  // event number
   TRandom3 *rand = new TRandom3();
 
@@ -370,10 +464,16 @@ int main(int argc, char** argv){
 
   // TH1F* reff3_tof = new TH1F("reff3_tof","reff3_tof",1000,64000,65000);
   // TH1F* reff5_tof = new TH1F("reff5_tof","reff5_tof",2000,00,168000);
-  TH1F* reff3_tof = new TH1F("reff3_tof","reff3_tof",2000,00,200000);
-  TH1F* reff5_tof = new TH1F("reff5_tof","reff5_tof",2000,00,200000);
+#ifndef KYUSHU
+  TH1F* reff3_tof[3];
+  TH1F* reff5_tof[3];
+  for(int t=0;t<3;t++){
+    reff3_tof[t] = new TH1F(Form("reff3_tof_%s",trigname[t]),Form("reff3_tof_%s",trigname[t]),2000,00,200000);
+    reff5_tof[t] = new TH1F(Form("reff5_tof_%s",trigname[t]),Form("reff5_tof_%s",trigname[t]),2000,00,200000);
+  }
   TH1F* f3f5_tof_all = new TH1F("f3f5_tof_all","f3f5_tof_all",6000,-300,300);
   TH1F* f3f5_tof = new TH1F("f3f5_tof","f3f5_tof",6000,-300,300);
+  
   TH1F* f3mult = new TH1F("f3mult","f3mult",100,0,100);
   TH1F* f5mult = new TH1F("f5mult","f5mult",100,0,100);
 
@@ -381,6 +481,8 @@ int main(int argc, char** argv){
   TH1F* fe12_ppac1y = new TH1F("fe12_ppac1y","fe12_ppac1y",4000,-200,200);
   TH1F* fe12_ppac2x = new TH1F("fe12_ppac2x","fe12_ppac2x",4000,-200,200);
   TH1F* fe12_ppac2y = new TH1F("fe12_ppac2y","fe12_ppac2y",4000,-200,200);
+
+#endif
 
   while(estore->GetNextEvent()){ 
     if(signal_received){
@@ -421,7 +523,11 @@ int main(int argc, char** argv){
       totreco[0][i] = sqrt(-1);
       totreco[1][i] = sqrt(-1);
       tinapid[i] = -1;
+      theta[0][i] = sqrt(-1);
+      theta[1][i] = sqrt(-1);
       excen[i] = sqrt(-1);
+      excencorr[0][i] = sqrt(-1);
+      excencorr[1][i] = sqrt(-1);
       sibsen[i] = sqrt(-1);
       sibsti[i] = sqrt(-1);
       csiSen[i] = sqrt(-1);
@@ -431,6 +537,10 @@ int main(int argc, char** argv){
       csiLti[i] = sqrt(-1);
 #endif
     }
+#ifndef KYUSHU 
+    //trigger
+    registr =0;
+
     //tof
     f3tof = sqrt(-1);
     f5tof = sqrt(-1);
@@ -438,6 +548,9 @@ int main(int argc, char** argv){
     beampid = 0;
 
     //ppac position
+    fe12tref = 999999;
+    fe12traw[0] = 999999;
+    fe12traw[1] = 999999;
     fe12x[0] = sqrt(-1);;
     fe12y[0] = sqrt(-1);;
     fe12x[1] = sqrt(-1);;
@@ -446,6 +559,18 @@ int main(int argc, char** argv){
     targety = sqrt(-1);;
     targeta = sqrt(-1);;
     targetb = sqrt(-1);;
+
+    //s1 stuff
+    s1tref=999999;
+    s1traw[0]=999999;
+    s1traw[1]=999999;
+    s1x[0] = sqrt(-1);;
+    s1y[0] = sqrt(-1);;
+    s1x[1] = sqrt(-1);;
+    s1y[1] = sqrt(-1);;
+    s1paden[0]=sqrt(-1);
+    s1paden[1]=sqrt(-1);
+#endif
 
     //temp data, not written to tree
     bool hadTINA = false;
@@ -466,12 +591,17 @@ int main(int argc, char** argv){
     int fe12xtime[2][2] = {{0,0},{0,0}};
     int fe12ytime[2][2] = {{0,0},{0,0}};
 
+    int s1xtime[2][2] = {{0,0},{0,0}};
+    int s1ytime[2][2] = {{0,0},{0,0}};
+    int s1padraw[S1PADS] = {0,0};
+
     //loop over the segments
     for(int i=0;i<rawevent->GetNumSeg();i++){
       TArtRawSegmentObject *seg = rawevent->GetSegment(i);
       if(vlevel>1){
 	cout << "event " << neve << "\tsegment " << i << "\tAddress " << seg->GetAddress() << "\tDevice " << seg->GetDevice() << "\tFocalPlane " << seg->GetFP() << "\tDetector " << seg->GetDetector() << "\tModule "<< seg->GetModule() << "\tnum data = " << seg->GetNumData() << endl;
       }
+#ifndef KYUSHU
       if(seg->GetDevice()==BEAMDEVICE && seg->GetFP()==BEAMFOCALPLANE){
 	//for PID:
 	//dev 60, fp 0, det 12, geo 1 (moco + mtdc)  (13 instead of 12 for v1290) 
@@ -531,26 +661,111 @@ int main(int argc, char** argv){
 	    if(vlevel>2)
 	      cout << "geo: " << geo  << "\tchan: " << chan  << "\tval: " << val << endl;  
 	    //PPAC 1
- 	    if(chan==17&&fe12xtime[0][0]==0)//PPAC1 X1
+	    if(chan==0 && fe12tref==999999)//time ref
+              fe12tref=val;
+	    if(chan==16 && fe12traw[0]==999999)//PPAC1 A
+              fe12traw[0]=val;
+ 	    if(chan==17 && fe12xtime[0][0]==0)//PPAC1 X1
 	      fe12xtime[0][0]=val;
- 	    if(chan==19&&fe12xtime[0][1]==0)//PPAC1 X2
+ 	    if(chan==19 && fe12xtime[0][1]==0)//PPAC1 X2
 	      fe12xtime[0][1]=val;
- 	    if(chan==18&&fe12ytime[0][0]==0)//PPAC1 Y1
+ 	    if(chan==18 && fe12ytime[0][0]==0)//PPAC1 Y1
 	      fe12ytime[0][0]=val;
- 	    if(chan==20&&fe12ytime[0][1]==0)//PPAC1 Y2
+ 	    if(chan==20 && fe12ytime[0][1]==0)//PPAC1 Y2
 	      fe12ytime[0][1]=val;
 	    //PPAC2
- 	    if(chan==22&&fe12xtime[1][0]==0)//PPAC2 X1
+	    if(chan==21 && fe12traw[1]==999999)//PPAC2 A
+              fe12traw[1]=val;
+ 	    if(chan==22 && fe12xtime[1][0]==0)//PPAC2 X1
 	      fe12xtime[1][0]=val;
- 	    if(chan==24&&fe12xtime[1][1]==0)//PPAC2 X2
+ 	    if(chan==24 && fe12xtime[1][1]==0)//PPAC2 X2
 	      fe12xtime[1][1]=val;
- 	    if(chan==23&&fe12ytime[1][0]==0)//PPAC2 Y1
+ 	    if(chan==23 && fe12ytime[1][0]==0)//PPAC2 Y1
 	      fe12ytime[1][0]=val;
- 	    if(chan==25&&fe12ytime[1][1]==0)//PPAC2 Y2
+ 	    if(chan==25 && fe12ytime[1][1]==0)//PPAC2 Y2
 	      fe12ytime[1][1]=val;
 	  }	  
 	}//ppac detector	
       }//beam data
+      
+      // s1 stuff
+      if(seg->GetDevice()==S1DEVICE && seg->GetFP()==S1FOCALPLANE){
+	if(seg->GetDetector()==S1DET){
+	  if(vlevel>1)
+	    cout << "S1 detector" << endl;
+	  for(int j=0;j<seg->GetNumData();j++){
+	    TArtRawDataObject *d = seg->GetData(j);
+	    //get geometric address, channel and value
+	    int geo = d->GetGeo(); 
+	    int chan = d->GetCh();
+	    int val = d->GetVal(); 
+	    if(vlevel>2)
+	      cout << "geo: " << geo  << "\tchan: " << chan  << "\tval: " << val << endl;  
+	    if(geo==0){// PPACs
+	      //PPAC 1
+	      if(chan==0 && s1tref==999999)//time ref
+                s1tref=val;
+	      if(chan==6 && s1traw[0]==999999)//PPAC1 A
+                s1traw[0]=val;
+ 	      if(chan==2 && s1xtime[0][0]==0)//PPAC1 X1
+	        s1xtime[0][0]=val;
+ 	      if(chan==4 && s1xtime[0][1]==0)//PPAC1 X2
+	        s1xtime[0][1]=val;
+ 	      if(chan==3 && s1ytime[0][0]==0)//PPAC1 Y1
+	        s1ytime[0][0]=val;
+ 	      if(chan==5 && s1ytime[0][1]==0)//PPAC1 Y2
+	        s1ytime[0][1]=val;
+	      //PPAC2
+	      if(chan==11 && s1traw[1]==999999)//PPAC2 A
+                s1traw[1]=val;
+ 	      if(chan==7 && s1xtime[1][0]==0)//PPAC2 X1
+	        s1xtime[1][0]=val;
+ 	      if(chan==9 && s1xtime[1][1]==0)//PPAC2 X2
+	        s1xtime[1][1]=val;
+ 	      if(chan==8 && s1ytime[1][0]==0)//PPAC2 Y1
+	        s1ytime[1][0]=val;
+ 	      if(chan==10 && s1ytime[1][1]==0)//PPAC2 Y2
+	        s1ytime[1][1]=val;
+	    } // geo0
+	    ////PPACS 
+ 	    //if(geo==0 && chan==6){//PPAC1 A
+	    //  s1ppactime[0]=val;
+	    // }
+ 	    //if(geo==0 && chan==11){//PPAC2 A
+	    //  s1ppactime[1]=val;
+	    //}
+	    if(geo==1){ //IC pads
+ 	      if(chan==30 && s1padraw[0]==0) //IC Pad 0
+	        s1padraw[0]=val;
+ 	      if(chan==29 && s1padraw[1]==0)//IC Pad 1
+	        s1padraw[1]=val;
+ 	      //if(chan==28 && s1padraw[2]==0)//IC Pad 2
+	      //  s1padraw[2]=val;
+ 	      //if(chan==27 && s1padraw[3]==0)//IC Pad 3
+	      //  s1padraw[3]=val;
+ 	      //if(chan==26 && s1padraw[4]==0)//IC Pad 4
+	      //  s1padraw[4]=val;
+ 	      //if(chan==25 && s1padraw[5]==0)//IC Pad 5
+	      //  s1padraw[5]=val;
+ 	      //if(chan==24 && s1padraw[6]==0)//IC Pad 6
+	      //  s1padraw[6]=val;
+ 	      //if(chan==23 && s1padraw[7]==0)//IC Pad 7
+	      //  s1padraw[7]=val;
+ 	      //if(chan==22 && s1padraw[8]==0)//IC Pad 8
+	      //  s1padraw[8]=val;
+ 	      //if(chan==21 && s1padraw[9]==0)//IC Pad 9
+	      //  s1padraw[9]=val;
+ 	      //if(chan==20 && s1padraw[10]==0)//IC Pad 10
+	      //  s1padraw[10]=val;
+ 	      //if(chan==19 && s1padraw[11]==0)//IC Pad 11
+	      //  s1padraw[11]=val;
+	    }
+	  }	  
+	}// s1 detector	
+      }//s1 data
+#endif
+
+
       if(seg->GetDevice()==TINADEVICE && seg->GetFP()==TINAFOCALPLANE){
 	if(vlevel>1)
 	  cout << "TINA data! " << endl;
@@ -675,6 +890,18 @@ int main(int argc, char** argv){
     //   cout << "----------------------" << endl;
     // }
     if(hadtdc){
+      for(int t=0;t<3;t++){
+	if(tdc[TIMEREF]-tdc[1+t] > triggercut[t][0] && tdc[TIMEREF]-tdc[1+t] < triggercut[t][1])
+	  registr |= 1U << t;
+      }
+      if(vlevel>1){
+	cout << "registr = " << registr << " = ";
+	for(int b=0;b<3;b++){
+	  int bb = (registr >> b) & 1U;
+	  cout << bb;
+	}
+	cout << endl;
+      }
       for(int ch=0;ch<64;ch++){
 	if(tdcchmult[ch]>0)
 	  hraw[NADC+1]->Fill(ch,tdcchmult[ch]);
@@ -711,7 +938,8 @@ int main(int argc, char** argv){
     }
     if(hadbug)
       bugevt++;
-    
+ 
+#ifndef KYUSHU   
     //tof
     // cout << "time fo flights " << endl;
     // cout << f3times.size() <<"\t" << f5times.size() << endl;
@@ -719,18 +947,24 @@ int main(int argc, char** argv){
     f5mult->Fill(f5times.size());
     for(vector<int>::iterator f3 = f3times.begin(); f3 != f3times.end(); f3++){
       //cout << *f3 << endl;
-      reff3_tof->Fill(reftime - *f3);
-      if( (reftime - *f3) > f3refcut[0] && (reftime - *f3) < f3refcut[1] )
-	f3tof = (*f3+rand->Uniform(0,1))*100./4096;
+      for(int b=0;b<3;b++){
+	if( (registr >> b) & 1U)
+	  reff3_tof[b]->Fill(reftime - *f3);
+	if( (reftime - *f3) > f3refcut[b][0] && (reftime - *f3) < f3refcut[b][1] )
+	  f3tof = (*f3+rand->Uniform(0,1))*100./4096;
+      }
       for(vector<int>::iterator f5 = f5times.begin(); f5 != f5times.end(); f5++){
      	f3f5_tof_all->Fill((*f5+rand->Uniform(0,1) - (*f3+rand->Uniform(0,1)))*100./4096 + tofoffset);
       } 
     }
     for(vector<int>::iterator f5 = f5times.begin(); f5 != f5times.end(); f5++){
       //cout << *f5 << endl;
-      reff5_tof->Fill(reftime - *f5);
-      if( (reftime - *f5) > f5refcut[0] && (reftime - *f5) < f5refcut[1] )
-	f5tof = (*f5+rand->Uniform(0,1))*100./4096;
+      for(int b=0;b<3;b++){
+	if( (registr >> b) & 1U)
+	  reff5_tof[b]->Fill(reftime - *f5);
+	if( (reftime - *f5) > f5refcut[b][0] && (reftime - *f5) < f5refcut[b][1] )
+	  f5tof = (*f5+rand->Uniform(0,1))*100./4096;
+      }
     } 
     
     f3f5tof = f5tof - f3tof + tofoffset; 
@@ -758,19 +992,23 @@ int main(int argc, char** argv){
     if(fe12y[1][0]>0&&fe12y[1][1]>0)
       fe12_ppac2y->Fill((fe12y[1][0]+rand->Uniform(0,1)-(fe12y[1][1]+rand->Uniform(0,1)))*100./1024);
     */
-
+    
+    // FE12 calibration
     for(int p=0;p<2;p++){
       if(fe12xtime[p][0]>0&&fe12xtime[p][1]>0){
 	fe12x[p] = (fe12xtime[p][0]+rand->Uniform(0,1)-(fe12xtime[p][1]+rand->Uniform(0,1)))*100./1024; //in ns
-	fe12x[p] += delayoffset[p][0] - linecalib[p][0];
-	fe12x[p] *= ns2mm[p][0]*0.5;
-	fe12x[p] -= ppacpos[p][0];	
+	fe12x[p] += fe12delayoffset[p][0] - fe12linecalib[p][0];
+	fe12x[p] *= fe12ns2mm[p][0]*0.5;
+	fe12x[p] -= fe12ppacpos[p][0];	
       }
       if(fe12ytime[p][0]>0&&fe12ytime[p][1]>0){
 	fe12y[p] = (fe12ytime[p][0]+rand->Uniform(0,1)-(fe12ytime[p][1]+rand->Uniform(0,1)))*100./1024; //in ns
-	fe12y[p] += delayoffset[p][1] - linecalib[p][1];
-	fe12y[p] *= ns2mm[p][1]*0.5;
-	fe12y[p] -= ppacpos[p][1]; 
+	fe12y[p] += fe12delayoffset[p][1] - fe12linecalib[p][1];
+	fe12y[p] *= fe12ns2mm[p][1]*0.5;
+	fe12y[p] -= fe12ppacpos[p][1]; 
+      }
+      if((fe12traw[p]-fe12tref)>fe12tcut[0][0] && (fe12traw[p]-fe12tref)<fe12tcut[0][1]){
+        fe12t[p] = (fe12traw[p]-fe12tref)*100.0/1024.0;
       }
     }
     fe12_ppac1x->Fill(fe12x[0]);
@@ -780,13 +1018,36 @@ int main(int argc, char** argv){
 
     //extrapolate to target
     if(!isnan(fe12x[0]) && !isnan(fe12x[1])){
-      targeta = atan((fe12x[1] - fe12x[0])/(ppacpos[1][2]-ppacpos[0][2]))*1000.; //in mrad
-      targetx = fe12x[1] + (targetpos - ppacpos[1][2])*tan(targeta/1000);
+      targeta = atan((fe12x[1] - fe12x[0])/(fe12ppacpos[1][2]-fe12ppacpos[0][2]))*1000.; //in mrad
+      targetx = fe12x[1] + (targetz - fe12ppacpos[1][2])*tan(targeta/1000);
     }
     if(!isnan(fe12y[0]) && !isnan(fe12y[1])){
-      targetb = atan((fe12y[1] - fe12y[0])/(ppacpos[1][2]-ppacpos[0][2]))*1000.; //in mrad
-      targety = fe12y[1] + (targetpos - ppacpos[1][2])*tan(targetb/1000);
+      targetb = atan((fe12y[1] - fe12y[0])/(fe12ppacpos[1][2]-fe12ppacpos[0][2]))*1000.; //in mrad
+      targety = fe12y[1] + (targetz - fe12ppacpos[1][2])*tan(targetb/1000);
     }
+    
+    
+    // S1 calibration
+    for(int p=0;p<2;p++){
+      if(s1xtime[p][0]>0&&s1xtime[p][1]>0){
+	s1x[p] = (s1xtime[p][0]+rand->Uniform(0,1)-(s1xtime[p][1]+rand->Uniform(0,1)))*100./1024; //in ns
+	s1x[p] += s1delayoffset[p][0] - s1linecalib[p][0];
+	s1x[p] *= s1ns2mm[p][0]*0.5;
+	s1x[p] -= s1ppacpos[p][0];	
+      }
+      if(s1ytime[p][0]>0&&s1ytime[p][1]>0){
+	s1y[p] = (s1ytime[p][0]+rand->Uniform(0,1)-(s1ytime[p][1]+rand->Uniform(0,1)))*100./1024; //in ns
+	s1y[p] += s1delayoffset[p][1] - s1linecalib[p][1];
+	s1y[p] *= s1ns2mm[p][1]*0.5;
+	s1y[p] -= s1ppacpos[p][1]; 
+      }
+      if(s1padraw[p]>0 && s1ic_lowercut[p]<s1padraw[p] && s1ic_uppercut[p]>s1padraw[p])
+        s1paden[p] = (Double_t)s1padraw[p]; // put here calibration parameter, if needed
+      if((s1traw[p]-s1tref)>s1tcut[0][0] && (s1traw[p]-s1tref)<s1tcut[0][1]){
+        s1t[p] = (s1traw[p]-s1tref)*100.0/1024.0;
+      }
+    }
+#endif
 
     //reconstruc energy loss
     if(hadTINA){
@@ -815,6 +1076,8 @@ int main(int argc, char** argv){
       }
       
       for(int i=0;i<NDET;i++){
+        //if(sicorr[i]>0)
+	//printf("i = %d, sitheta[i] = %f, sifsen[i] = %f, csiLen[i] = %f\n", i, sitheta[i], sifsen[i], csiLen[i]);
 #ifdef KYUSHU
 	if(csiSen[i] > 0 && pidSCut[i]!=NULL && pidSCut[i]->IsInside(csiSen[i],sicorr[i]))
 	  tinapid[i] = 0;
@@ -823,11 +1086,24 @@ int main(int argc, char** argv){
 	  tinapid[i] = 0;
  	else if(csiSen[i] > 0 && pidSCut[i]!=NULL && pidSCut[i]->IsInside(csiSen[i],sicorr[i]))
 	  tinapid[i] = 0;
+	
+	// if only Si fire, assume proton
+	else if(sicorr[i]>0 && !(pidLCut[i]->IsInside(csiLen[i],sicorr[i])) && (TMath::IsNaN(csiLen[i]) || csiLen[i]<3.0) ){
+	  tinapid[i] = 1;
+	  toten[i]=sifsen[i];
+	}
 #endif
 	else if(deutCut[i]!=NULL && deutCut[i]->IsInside(sitheta[i],sifsen[i]))
 	  tinapid[i] = 2;
 	else if(protCut[i]!=NULL && protCut[i]->IsInside(sitheta[i],sifsen[i]))
 	  tinapid[i] = 1;
+	// if only Si fire, assume proton
+	//else if(!protCut[i]->IsInside(sitheta[i],sifsen[i]) && !deutCut[i]->IsInside(sitheta[i],sifsen[i]) && (TMath::IsNaN(csiSen[i]) || csiSen[i]<2.0) )
+	//  tinapid[i] = 1;
+	else if(sicorr[i]>0 && !(pidSCut[i]->IsInside(csiSen[i],sicorr[i])) && (TMath::IsNaN(csiSen[i]) || csiSen[i]<2.0) ){
+	  tinapid[i] = 1;
+	  toten[i]=sifsen[i];
+	}
 
 	double ene = toten[i];
 	double range;
@@ -866,7 +1142,8 @@ int main(int argc, char** argv){
 	  totreco[1][i] = ene;
 	}//deuteron
 	//kinematics excitation energy
-	if(tinapid[i]==0){//identified proton
+	//if(tinapid[i]==0){//identified proton
+	if(tinapid[i]==0 || tinapid[i]==1){//identified or stopped proton
 	  TVector3 recodir(0,0,1);
 	  recodir.SetTheta(sitheta[i]*deg2rad);
 	  TLorentzVector recoLV(recodir, totreco[1][i]*1000+prot->GetMass()*1000);
@@ -874,6 +1151,38 @@ int main(int argc, char** argv){
 	    recoLV.SetRho( sqrt( (totreco[1][i]+prot->GetMass())*(totreco[1][i]+prot->GetMass()) - prot->GetMass()*prot->GetMass() )*1000 );
 	  if(dpkine.at(0))
 	    excen[i] = dpkine.at(0)->GetExcEnergy(recoLV)/1000; // to MeV
+
+	  
+	  // corr[0]: correct for position on target
+	  recodir.SetMagThetaPhi(stripDist[siring[i]], sitheta[i]*deg2rad, detectorphi[i]*deg2rad);
+	  TVector3 beampos(targetx, targety, targetz);
+	  recodir -= beampos;
+          
+	  theta[0][i] = recodir.Theta()*rad2deg;
+	  recodir.SetMag(1.0);
+
+          recoLV.SetVectM(recodir, totreco[1][i]*1000+prot->GetMass()*1000);
+          if(recoLV.Mag()>0)
+            recoLV.SetRho( sqrt( (totreco[1][i]+prot->GetMass())*(totreco[1][i]+prot->GetMass()) - prot->GetMass()*prot->GetMass() )*1000 );
+          if(dpkine.at(0))
+            excencorr[0][i] = dpkine.at(0)->GetExcEnergy(recoLV)/1000; // to MeV
+
+
+	  // corr[1]: correcto for angle of beam on target
+	  // todo: check rotations
+	  recodir.RotateY(targeta/1000.0);
+	  recodir.RotateX(-targetb/1000.0);
+
+	  theta[1][i] = recodir.Theta()*rad2deg;
+
+          recoLV.SetVectM(recodir, totreco[1][i]*1000+prot->GetMass()*1000);
+          if(recoLV.Mag()>0)
+            recoLV.SetRho( sqrt( (totreco[1][i]+prot->GetMass())*(totreco[1][i]+prot->GetMass()) - prot->GetMass()*prot->GetMass() )*1000 );
+          if(dpkine.at(0))
+            excencorr[1][i] = dpkine.at(0)->GetExcEnergy(recoLV)/1000; // to MeV
+
+
+
 	}//identified proton
       }//ndet
     }//hadtinadata
@@ -941,11 +1250,13 @@ map<int,pair<int,double> > ch2stripmap(char* filename){
   infile.ignore(1000,'\n');
   for(int i=0;i<16;i++){
     int ch,st;
-    double th;
-    infile >> ch >> st >> th;
+    double th, dth, dist;
+    infile >> ch >> st >> th >> dth >> dist;
     infile.ignore(1000,'\n');
     m[ch].first = st;
     m[ch].second = th;
+    stripTheta[st]=th;
+    stripDist[st]=dist;
   }
   return m;
 }
@@ -1090,6 +1401,7 @@ void readpidcuts(const char* filename){
   for(int i=0;i<NDET;i++){
     deutCut[i] = NULL;
     protCut[i] = NULL;
+    kineCut = NULL;
     pidSCut[i] = NULL;
     pidLCut[i] = NULL;
   }
@@ -1101,6 +1413,7 @@ void readpidcuts(const char* filename){
   for(int i=0;i<NDET;i++){
     deutCut[i] = (TCutG*)fc->Get(Form("deut%d",i));
     protCut[i] = (TCutG*)fc->Get(Form("prot%d",i));
+    kineCut = (TCutG*)fc->Get(Form("kineCut"));
     pidSCut[i] = (TCutG*)fc->Get(Form("csiS%d",i));
     pidLCut[i] = (TCutG*)fc->Get(Form("csiL%d",i));
   }
