@@ -331,7 +331,8 @@ int main(int argc, char** argv){
 	      sicorr[det] = cos(alpha*deg2rad)*en;
 	    }
 	    if(DEBUG)
-	      cout << "det: " << det  << "\tchan: " << chan  << "\tstrip: " << siring[det] << "\ten: " << en << endl;  
+	      cout << "det: " << det << "\tchan: " << chan  << "\tstrip: " << siring[det] << "\ten: " << en << endl;  
+	    //cout << "num: " << num << "\tdet: " << det  << "\tchan: " << chan  << "\tchan%16: " << chan%16  << "\tchmap[chan%16].first: " << chmap[chan%16].first << "\tstrip: " << siring[det] << "\ten: " << en << endl;  
 	  }
 	  else if(geo==ADC0){
 	    if(DEBUG)
@@ -395,8 +396,7 @@ int main(int argc, char** argv){
     if(haddata){
       for(int i=0;i<NDET;i++){
 	if(pidCut[i]!=NULL && pidCut[i]->IsInside(csien[i],sicorr[i])){
-	  pid[i] = 0;
-	  continue;
+	  pid[i] = 10;
 	}
 	if(deutCut[i]!=NULL && deutCut[i]->IsInside(sitheta[i],sienergy[i])){
 	  pid[i] = 2;
@@ -415,6 +415,22 @@ int main(int argc, char** argv){
 	}
 	else if(protCut[i]!=NULL && protCut[i]->IsInside(sitheta[i],sienergy[i])){
 	  pid[i] = 1;
+	  double ene = sienergy[i];
+	  //reconstruct energy loss in the al foil
+	  double alpha = 90.-detectorangle-sitheta[i];
+	  double althick = foilthick*2.70*0.1/cos(alpha*deg2rad);
+	  double range = protFoil_e2r->Eval(ene);
+	  ene = protFoil_r2e->Eval(range+althick);
+	  sireco[0][i] = ene;
+	  //reconstruct energy loss in half the target
+	  double tithick = targetthick/2*4.50*0.1/cos(sitheta[i]*deg2rad);
+	  range = protTarg_e2r->Eval(ene);
+	  ene = protTarg_r2e->Eval(range+tithick);
+	  sireco[1][i] = ene;
+	}
+	else{ //everything is a proton
+	  if(pid[i]<0)
+	    pid[i] = 0;	  
 	  double ene = sienergy[i];
 	  //reconstruct energy loss in the al foil
 	  double alpha = 90.-detectorangle-sitheta[i];
