@@ -1,0 +1,24 @@
+#define ADC0 11  //ch 0-15 YY1 No1, ch 16-31 YY1 No2
+#define ADC1 12  //ch 0-15 YY1 No3, ch 16-31 YY1 No4
+#define ADC2 13  //ch 0-15 YY1 No5, ch 16-31 YY1 No5
+#define ADC3 14  //ch 0-15 CsI,     ch 16-31 YY1 backsides
+#define ADC4 15  //spare
+#define TDC0 0
+#define TIMEREF 0
+
+#define NDET 6
+#define NSTRIPS 16
+#define NADC 5
+
+#define BEAMDEVICE 60
+#define TINADEVICE 0
+#define S1DEVICE 11
+#define BEAMFOCALPLANE 0
+#define TINAFOCALPLANE 0
+#define S1FOCALPLANE 21
+#define TOFDET 13
+#define PPACDET 15
+#define S1DET 31
+#define S1PADS 2 // up to 12
+
+#define OVERFLOWBINS 4080

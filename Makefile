@@ -25,7 +25,7 @@ CFLAGS += -Wl,--no-as-needed
 LFLAGS += -Wl,--no-as-needed
 CFLAGS += -Wno-unused-variable -Wno-write-strings
 
-CFLAGS += -UKYUSHU
+CFLAGS += -DKYUSHU
 
 SRCS = $(wildcard *.cc)
 PROG = $(patsubst %.cc,%,$(SRCS)) 

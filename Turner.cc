@@ -21,6 +21,8 @@
 #include "Reconstruction.hh"
 #include "Kinematics.hh"
 #include "CommandLineInterface.hh"
+
+#include "detector.def"
 using namespace std;
 
 #ifndef rad2deg
@@ -29,31 +31,6 @@ using namespace std;
 #ifndef deg2rad
 #define deg2rad                       (TMath::Pi())/180.
 #endif
-
-#define ADC0 11  //ch 0-15 YY1 No1, ch 16-31 YY1 No2
-#define ADC1 12  //ch 0-15 YY1 No3, ch 16-31 YY1 No4
-#define ADC2 13  //ch 0-15 YY1 No5, ch 16-31 YY1 No5
-#define ADC3 14  //ch 0-15 CsI,     ch 16-31 YY1 backsides
-#define ADC4 15  //spare
-#define TDC0 0
-#define TIMEREF 0
-
-#define NDET 6
-#define NSTRIPS 16
-#define NADC 5
-
-#define BEAMDEVICE 60
-#define TINADEVICE 0
-#define S1DEVICE 11
-#define BEAMFOCALPLANE 0
-#define TINAFOCALPLANE 0
-#define S1FOCALPLANE 21
-#define TOFDET 13
-#define PPACDET 15
-#define S1DET 31
-#define S1PADS 2 // up to 12
-
-#define OVERFLOWBINS 4080
 
 int vlevel =0;
 TSpline3* protTarg_e2r;
@@ -647,22 +624,6 @@ int main(int argc, char** argv){
 		  f5leading = true;
 	      }
 	    }
-<<<<<<< HEAD
-	    if(DEBUG)
-	      cout << "det: " << det << "\tchan: " << chan  << "\tstrip: " << siring[det] << "\ten: " << en << endl;  
-	    //cout << "num: " << num << "\tdet: " << det  << "\tchan: " << chan  << "\tchan%16: " << chan%16  << "\tchmap[chan%16].first: " << chmap[chan%16].first << "\tstrip: " << siring[det] << "\ten: " << en << endl;  
-	  }
-	  else if(geo==ADC0){
-	    if(DEBUG)
-	      cout << "geo: " << geo  << "\tchan: " << chan  << "\tval: " << val << endl; 
-	    if(chan>15 && chan<15+NDET+1)//check
-	      sibsen[chan-16] = en;
-	    else if(chan<NDET)
-	      csien[chan] = en;
-	    else{
-	      //cout << "unknown channel" << endl;
-	      //cout << "geo: " << geo  << "\tchan: " << chan  << "\tval: " << val << endl; 
-=======
 	  }//data
 	}//tof detector
 	if(seg->GetDetector()==PPACDET){
@@ -775,7 +736,6 @@ int main(int argc, char** argv){
 	      //  s1padraw[10]=val;
  	      //if(chan==19 && s1padraw[11]==0)//IC Pad 11
 	      //  s1padraw[11]=val;
->>>>>>> 6d3290167d355101c1169de99269e4a20f9d2022
 	    }
 	  }	  
 	}// s1 detector	
@@ -835,6 +795,9 @@ int main(int argc, char** argv){
 	    if(det>-1&&en>0){
 	      simult[det]++;
 	      int ring = chmap[chan%16].first; // mapping to real strip number
+	      if(vlevel>1)
+		cout << "ring: " << ring  << "\tchan: " << chan  << "\ten: " << en << endl;  
+	      
 	      sirien[det][ring] = en;
 	      if(siring[det]<0 || en > sifsen[det]){
 		siring[det] = ring;
@@ -907,6 +870,7 @@ int main(int argc, char** argv){
     //   cout << "----------------------" << endl;
     // }
     if(hadtdc){
+#ifndef KYUSHU 
       for(int t=0;t<3;t++){
 	if(tdc[TIMEREF]-tdc[1+t] > triggercut[t][0] && tdc[TIMEREF]-tdc[1+t] < triggercut[t][1])
 	  registr |= 1U << t;
@@ -919,6 +883,7 @@ int main(int argc, char** argv){
 	}
 	cout << endl;
       }
+#endif      
       for(int ch=0;ch<64;ch++){
 	if(tdcchmult[ch]>0)
 	  hraw[NADC+1]->Fill(ch,tdcchmult[ch]);
@@ -1070,17 +1035,12 @@ int main(int argc, char** argv){
     if(hadTINA){
       //calculate total energy
       for(int i=0;i<NDET;i++){
-<<<<<<< HEAD
-	if(pidCut[i]!=NULL && pidCut[i]->IsInside(csien[i],sicorr[i])){
-	  pid[i] = 10;
-=======
 #ifndef KYUSHU 
 	if(csiLen[i] > 0 && csiSen[i] >0){
 	  if(csiLen[i]>csiSen[i])
 	    toten[i] = sifsen[i] + csiLen[i];
 	  else
 	    toten[i] = sifsen[i] + csiSen[i];
->>>>>>> 6d3290167d355101c1169de99269e4a20f9d2022
 	}
 	else if(csiLen[i] > 0){
 	  toten[i] = sifsen[i] + csiLen[i];
@@ -1099,7 +1059,7 @@ int main(int argc, char** argv){
       
       for(int i=0;i<NDET;i++){
         //if(sicorr[i]>0)
-	//printf("i = %d, sitheta[i] = %f, sifsen[i] = %f, csiLen[i] = %f\n", i, sitheta[i], sifsen[i], csiLen[i]);
+	//printf("i = %d, sitheta[i] = %f, sifsen[i] = %f, csiSen[i] = %f\n", i, sitheta[i], sifsen[i], csiSen[i]);
 #ifdef KYUSHU
 	if(csiSen[i] > 0 && pidSCut[i]!=NULL && pidSCut[i]->IsInside(csiSen[i],sicorr[i]))
 	  tinapid[i] = 0;
@@ -1122,7 +1082,7 @@ int main(int argc, char** argv){
 	// if only Si fire, assume proton
 	//else if(!protCut[i]->IsInside(sitheta[i],sifsen[i]) && !deutCut[i]->IsInside(sitheta[i],sifsen[i]) && (TMath::IsNaN(csiSen[i]) || csiSen[i]<2.0) )
 	//  tinapid[i] = 1;
-	else if(sicorr[i]>0 && !(pidSCut[i]->IsInside(csiSen[i],sicorr[i])) && (TMath::IsNaN(csiSen[i]) || csiSen[i]<2.0) ){
+	else if(sicorr[i]>0 && pidSCut[i]!=NULL && !pidSCut[i]->IsInside(csiSen[i],sicorr[i]) && (TMath::IsNaN(csiSen[i]) || csiSen[i]<2.0) ){
 	  tinapid[i] = 1;
 	  toten[i]=sifsen[i];
 	}
@@ -1131,7 +1091,7 @@ int main(int argc, char** argv){
 	double range;
 	double alpha;
 	if(tinapid[i]==0||tinapid[i]==1){
-#ifdef KYUHSU
+#ifdef KYUSHU
 	  alpha = 90.-detectorangle-sitheta[i];
 	  double althick = foilthick*foildensity*0.1/fabs(cos(alpha*deg2rad));
 	  range = protFoil_e2r->Eval(ene);
@@ -1143,34 +1103,12 @@ int main(int argc, char** argv){
 	  //reconstruct energy loss in half the target
 	  double tathick = targetthick/2*targetdensity*0.1/fabs(cos(sitheta[i]*deg2rad));
 	  range = protTarg_e2r->Eval(ene);
-<<<<<<< HEAD
-	  ene = protTarg_r2e->Eval(range+tithick);
-	  sireco[1][i] = ene;
-	}
-	else{ //everything is a proton
-	  if(pid[i]<0)
-	    pid[i] = 0;	  
-	  double ene = sienergy[i];
-	  //reconstruct energy loss in the al foil
-	  double alpha = 90.-detectorangle-sitheta[i];
-	  double althick = foilthick*2.70*0.1/cos(alpha*deg2rad);
-	  double range = protFoil_e2r->Eval(ene);
-	  ene = protFoil_r2e->Eval(range+althick);
-	  sireco[0][i] = ene;
-	  //reconstruct energy loss in half the target
-	  double tithick = targetthick/2*4.50*0.1/cos(sitheta[i]*deg2rad);
-	  range = protTarg_e2r->Eval(ene);
-	  ene = protTarg_r2e->Eval(range+tithick);
-	  sireco[1][i] = ene;
-	}
-      }
-=======
 	  ene = protTarg_r2e->Eval(range+tathick);
 	  totreco[1][i] = ene;
 	}//proton
 	if(tinapid[i]==2){
 	  //reconstruct energy loss in the al foil
-#ifdef KYUHSU
+#ifdef KYUSHU
 	  alpha = 90.-detectorangle-sitheta[i];
 	  double althick = foilthick*foildensity*0.1/fabs(cos(alpha*deg2rad));
 	  range = deutFoil_e2r->Eval(ene);
@@ -1195,13 +1133,14 @@ int main(int argc, char** argv){
 	    recoLV.SetRho( sqrt( (totreco[1][i]+prot->GetMass())*(totreco[1][i]+prot->GetMass()) - prot->GetMass()*prot->GetMass() )*1000 );
 	  if(dpkine.at(0))
 	    excen[i] = dpkine.at(0)->GetExcEnergy(recoLV)/1000; // to MeV
->>>>>>> 6d3290167d355101c1169de99269e4a20f9d2022
 
 	  
+#ifndef KYUSHU
 	  // corr[0]: correct for position on target
 	  recodir.SetMagThetaPhi(stripDist[siring[i]], sitheta[i]*deg2rad, detectorphi[i]*deg2rad);
 	  TVector3 beampos(targetx, targety, targetz);
 	  recodir -= beampos;
+#endif
           
 	  theta[0][i] = recodir.Theta()*rad2deg;
 	  recodir.SetMag(1.0);
@@ -1213,10 +1152,12 @@ int main(int argc, char** argv){
             excencorr[0][i] = dpkine.at(0)->GetExcEnergy(recoLV)/1000; // to MeV
 
 
+#ifndef KYUSHU
 	  // corr[1]: correcto for angle of beam on target
 	  // todo: check rotations
 	  recodir.RotateY(targeta/1000.0);
 	  recodir.RotateX(-targetb/1000.0);
+#endif
 
 	  theta[1][i] = recodir.Theta()*rad2deg;
 
@@ -1296,7 +1237,12 @@ map<int,pair<int,double> > ch2stripmap(char* filename){
   for(int i=0;i<16;i++){
     int ch,st;
     double th, dth, dist;
+#ifdef KYUSHU
+    infile >> ch >> st >> th >> dth;
+    dist = 0;
+#else
     infile >> ch >> st >> th >> dth >> dist;
+#endif
     infile.ignore(1000,'\n');
     m[ch].first = st;
     m[ch].second = th;

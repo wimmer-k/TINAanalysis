@@ -1,0 +1,22 @@
+#define ADC0 10
+#define ADC1 11
+#define ADC2 12
+#define TDC0 0
+#define TIMEREF 0
+
+#define NDET 4
+#define NSTRIPS 16
+#define NADC 3
+
+#define BEAMDEVICE 60
+#define TINADEVICE 0
+#define S1DEVICE 11
+#define BEAMFOCALPLANE 0
+#define TINAFOCALPLANE 0
+#define S1FOCALPLANE 21
+#define TOFDET 13
+#define PPACDET 15
+#define S1DET 31
+#define S1PADS 2 // up to 12
+
+#define OVERFLOWBINS 4080
